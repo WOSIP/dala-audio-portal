@@ -1,26 +1,14 @@
-1. **Data Model Update**:
-   - Update `src/types.ts` to use `illustrationUrls` instead of `illustrations`.
-   - Update `src/data.ts` to match the new type.
+# Plan to fix PDF Worker Runtime Error
 
-2. **App.tsx State Refactor**:
-   - Move `currentIllustrationIndex` from `AudioPlayer` to `App.tsx`.
-   - Ensure it resets to 0 when `currentComic` changes.
-   - Create handlers `handleNextPage` and `handlePrevPage`.
+The application fails to load the PDF worker from Cloudflare CDN, causing a runtime error when processing PDF files. We will switch to using a local worker bundled by Vite, which is the recommended and more reliable approach for modern React/Vite applications.
 
-3. **Admin Panel Enhancement**:
-   - Add a "Single Link" input field.
-   - Add a "Process & Extract" button.
-   - Implement `processLink` logic:
-     - If it's a specific recognized format (mocking this), populate `audioUrl` and `illustrationUrls`.
-     - Otherwise, show a toast.
-   - Keep manual overrides for flexibility.
+## Steps:
 
-4. **AudioPlayer Refactor**:
-   - Update to use `illustrationUrls`.
-   - Repurpose the primary Next/Previous buttons (SkipBack/SkipForward) to handle page navigation within the current comic, as requested by the user's UX description.
-   - Add a "Next/Prev Comic" indicator or small buttons if needed, or rely on the sidebar for comic switching as per the user's primary "How it works" description.
+1. **Update `src/utils/pdf-handler.ts`**:
+   - Import the worker source directly from `pdfjs-dist` using Vite's `?url` suffix.
+   - Set `pdfjsLib.GlobalWorkerOptions.workerSrc` to this imported URL.
+   - This ensures the worker is bundled and served from the same origin as the application, avoiding CORS and network issues.
 
-5. **Validation**:
-   - Verify that clicking a comic in the sidebar resets the page to 1.
-   - Verify that page flipping doesn't stop the audio.
-   - Verify that the single link processing works.
+2. **Verification**:
+   - Run `validate_build` to ensure the project still builds correctly with the new import.
+   - The runtime error should be resolved when the application is previewed.

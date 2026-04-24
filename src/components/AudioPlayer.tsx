@@ -9,32 +9,32 @@ import {
   RotateCw,
   ChevronLeft,
   ChevronRight,
-  BookOpen
+  BookOpen,
+  SkipBack,
+  SkipForward
 } from "lucide-react";
 import { Slider } from "./ui/slider";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { motion, AnimatePresence } from "framer-motion";
-import { cn } from "@/lib/utils";
 
 interface AudioPlayerProps {
   currentComic: Comic;
-  currentIllustrationIndex: number;
-  onNextPage: () => void;
-  onPreviousPage: () => void;
+  onNextComic: () => void;
+  onPreviousComic: () => void;
 }
 
 export const AudioPlayer: React.FC<AudioPlayerProps> = ({ 
   currentComic, 
-  currentIllustrationIndex,
-  onNextPage,
-  onPreviousPage
+  onNextComic,
+  onPreviousComic
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(80);
   const [isMuted, setIsMuted] = useState(false);
+  const [currentIllustrationIndex, setCurrentIllustrationIndex] = useState(0);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -42,14 +42,25 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     ? currentComic.illustrationUrls 
     : [currentComic.coverUrl];
 
+  // Reset page index and audio when switching comics
   useEffect(() => {
+    setCurrentIllustrationIndex(0);
     if (audioRef.current) {
       audioRef.current.src = currentComic.audioUrl;
+      // If was already playing, try to play the new one
       if (isPlaying) {
         audioRef.current.play().catch(err => console.error("Playback failed:", err));
       }
     }
-  }, [currentComic.audioUrl]);
+  }, [currentComic.id, currentComic.audioUrl]);
+
+  const handleNextPage = () => {
+    setCurrentIllustrationIndex((prev) => (prev + 1) % pages.length);
+  };
+
+  const handlePreviousPage = () => {
+    setCurrentIllustrationIndex((prev) => (prev - 1 + pages.length) % pages.length);
+  };
 
   const togglePlay = () => {
     if (audioRef.current) {
@@ -122,7 +133,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     <Card className="w-full bg-white/5 backdrop-blur-md border-white/10 shadow-2xl p-4 lg:p-8 flex flex-col gap-8 rounded-3xl">
       <div className="flex flex-col gap-8">
         {/* Illustration Swiper Area */}
-        <div className="relative w-full aspect-[16/9] md:aspect-[21/9] rounded-2xl overflow-hidden bg-black/40 border border-white/5">
+        <div className="relative w-full aspect-[16/9] md:aspect-[21/9] rounded-2xl overflow-hidden bg-black/40 border border-white/5 group">
           <AnimatePresence mode="wait">
             <motion.div
               key={`${currentComic.id}-${currentIllustrationIndex}`}
@@ -151,43 +162,29 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             </span>
           </div>
 
-          {/* Navigation Arrows */}
+          {/* Navigation Arrows (For Pages) */}
           {pages.length > 1 && (
             <div className="absolute inset-y-0 inset-x-4 flex items-center justify-between pointer-events-none">
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={onPreviousPage}
-                className="pointer-events-auto h-12 w-12 rounded-full bg-black/40 hover:bg-amber-500 text-white border-none shadow-xl"
+                onClick={handlePreviousPage}
+                className="pointer-events-auto h-12 w-12 rounded-full bg-black/40 hover:bg-amber-500 text-white border-none shadow-xl transition-all duration-200"
+                title="Previous Page"
               >
                 <ChevronLeft className="w-6 h-6" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={onNextPage}
-                className="pointer-events-auto h-12 w-12 rounded-full bg-black/40 hover:bg-amber-500 text-white border-none shadow-xl"
+                onClick={handleNextPage}
+                className="pointer-events-auto h-12 w-12 rounded-full bg-black/40 hover:bg-amber-500 text-white border-none shadow-xl transition-all duration-200"
+                title="Next Page"
               >
                 <ChevronRight className="w-6 h-6" />
               </Button>
             </div>
           )}
-
-          {/* Centered Play Button (Visible on hover or when paused) */}
-          <div 
-            className={cn(
-              "absolute inset-0 flex items-center justify-center transition-all duration-300 pointer-events-none",
-              !isPlaying ? "opacity-100" : "opacity-0 hover:opacity-100"
-            )}
-          >
-            <Button 
-              size="icon" 
-              onClick={togglePlay}
-              className="pointer-events-auto h-24 w-24 rounded-full bg-amber-500 hover:bg-amber-400 text-black shadow-2xl transition-transform hover:scale-110"
-            >
-              {isPlaying ? <Pause className="w-12 h-12 fill-current" /> : <Play className="w-12 h-12 fill-current ml-1" />}
-            </Button>
-          </div>
         </div>
 
         {/* Audio Controls Area */}
@@ -217,54 +214,81 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             </div>
           </div>
 
-          <div className="space-y-4">
-            <Slider 
-              value={[currentTime]} 
-              max={duration || 100} 
-              step={0.1} 
-              onValueChange={handleSliderChange}
-              className="cursor-pointer"
-            />
-            <div className="flex items-center justify-between text-xs font-bold tracking-widest text-slate-500 uppercase">
-              <span>{formatTime(currentTime)}</span>
-              <div className="flex items-center gap-6">
+          <div className="space-y-6">
+            <div className="flex flex-col gap-4">
+              <Slider 
+                value={[currentTime]} 
+                max={duration || 100} 
+                step={0.1} 
+                onValueChange={handleSliderChange}
+                className="cursor-pointer"
+              />
+              <div className="flex items-center justify-between text-[10px] font-black tracking-[0.2em] text-slate-500 uppercase">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center">
+              <div className="flex items-center gap-4 md:gap-8 bg-white/5 backdrop-blur-md px-8 py-4 rounded-full border border-white/10">
+                {/* Previous Comic */}
                 <Button 
                   variant="ghost" 
                   size="icon" 
-                  onClick={onPreviousPage}
-                  className="hover:bg-white/10 text-white rounded-full h-10 w-10"
+                  onClick={onPreviousComic}
+                  className="hover:bg-white/10 text-slate-400 hover:text-white rounded-full h-10 w-10 transition-colors"
+                  title="Previous Comic"
                 >
-                  <ChevronLeft className="w-5 h-5" />
+                  <SkipBack className="w-5 h-5" />
                 </Button>
                 
+                {/* Back 10s */}
                 <Button 
                   variant="ghost" 
                   size="icon" 
                   onClick={skipBackward}
-                  className="hover:bg-white/10 text-slate-400 rounded-full h-9 w-9"
+                  className="hover:bg-white/10 text-slate-400 hover:text-white rounded-full h-9 w-9 transition-colors"
+                  title="Back 10s"
                 >
                   <RotateCcw className="w-4 h-4" />
                 </Button>
 
+                {/* Main Play/Pause Launch Control */}
+                <Button 
+                  size="icon" 
+                  onClick={togglePlay}
+                  className="h-16 w-16 rounded-full bg-amber-500 hover:bg-amber-400 text-black shadow-2xl transition-transform hover:scale-110 active:scale-95 flex items-center justify-center"
+                  title={isPlaying ? "Pause" : "Play"}
+                >
+                  {isPlaying ? (
+                    <Pause className="w-8 h-8 fill-current" />
+                  ) : (
+                    <Play className="w-8 h-8 fill-current ml-1" />
+                  )}
+                </Button>
+
+                {/* Forward 10s */}
                 <Button 
                   variant="ghost" 
                   size="icon" 
                   onClick={skipForward}
-                  className="hover:bg-white/10 text-slate-400 rounded-full h-9 w-9"
+                  className="hover:bg-white/10 text-slate-400 hover:text-white rounded-full h-9 w-9 transition-colors"
+                  title="Forward 10s"
                 >
                   <RotateCw className="w-4 h-4" />
                 </Button>
 
+                {/* Next Comic */}
                 <Button 
                   variant="ghost" 
                   size="icon" 
-                  onClick={onNextPage}
-                  className="hover:bg-white/10 text-white rounded-full h-10 w-10"
+                  onClick={onNextComic}
+                  className="hover:bg-white/10 text-slate-400 hover:text-white rounded-full h-10 w-10 transition-colors"
+                  title="Next Comic"
                 >
-                  <ChevronRight className="w-5 h-5" />
+                  <SkipForward className="w-5 h-5" />
                 </Button>
               </div>
-              <span>{formatTime(duration)}</span>
             </div>
           </div>
         </div>
@@ -274,7 +298,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         ref={audioRef}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
-        onEnded={() => {}}
+        onEnded={() => onNextComic()}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
       />

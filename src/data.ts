@@ -13,6 +13,10 @@ export const initialComics: Comic[] = [
     ],
     notes: "The beginning of an epic journey through the ancient lands.",
     createdAt: new Date().toISOString(),
+    enabled: true,
+    deleted: false,
+    audioImportLink: "https://dala-audio-bundle-import.com/dala-legend-audio",
+    illustrationImportLink: "https://dala-audio-bundle-import.com/dala-legend-art"
   },
   {
     id: "2",
@@ -25,6 +29,10 @@ export const initialComics: Comic[] = [
     ],
     notes: "Listen to the voices of those who came before us.",
     createdAt: new Date().toISOString(),
+    enabled: true,
+    deleted: false,
+    audioImportLink: "https://dala-audio-bundle-import.com/echoes-audio",
+    illustrationImportLink: "https://dala-audio-bundle-import.com/echoes-art"
   },
   {
     id: "3",
@@ -37,41 +45,9 @@ export const initialComics: Comic[] = [
     ],
     notes: "A story of courage, honor, and the strength of the spirit.",
     createdAt: new Date().toISOString(),
-  },
-  {
-    id: "4",
-    title: "Spirit of the Savannah",
-    audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
-    coverUrl: "https://storage.googleapis.com/dala-prod-public-storage/generated-images/a0c853ef-8c9b-4188-873a-65414f906e88/spirit-of-the-savannah-642170a3-1777005230922.webp",
-    illustrationUrls: [
-      "https://storage.googleapis.com/dala-prod-public-storage/generated-images/a0c853ef-8c9b-4188-873a-65414f906e88/spirit-of-the-savannah---page-1-6897f3e3-1777005702539.webp",
-      "https://storage.googleapis.com/dala-prod-public-storage/generated-images/a0c853ef-8c9b-4188-873a-65414f906e88/spirit-of-the-savannah---page-2-414e26e5-1777005704862.webp"
-    ],
-    notes: "Discover the magical creatures that roam the wild plains.",
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "5",
-    title: "Market Day Tales",
-    audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
-    coverUrl: "https://storage.googleapis.com/dala-prod-public-storage/generated-images/a0c853ef-8c9b-4188-873a-65414f906e88/market-day-tales-3c218663-1777005231094.webp",
-    illustrationUrls: [
-      "https://storage.googleapis.com/dala-prod-public-storage/generated-images/a0c853ef-8c9b-4188-873a-65414f906e88/market-day-tales---page-1-61daf43b-1777005705122.webp",
-      "https://storage.googleapis.com/dala-prod-public-storage/generated-images/a0c853ef-8c9b-4188-873a-65414f906e88/market-day-tales---page-2-a85266ad-1777005705267.webp"
-    ],
-    notes: "The marketplace is full of secrets and surprising stories.",
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: "6",
-    title: "Night of the Storyteller",
-    audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
-    coverUrl: "https://storage.googleapis.com/dala-prod-public-storage/generated-images/a0c853ef-8c9b-4188-873a-65414f906e88/night-of-the-storyteller-d9d14369-1777005229667.webp",
-    illustrationUrls: [
-      "https://storage.googleapis.com/dala-prod-public-storage/generated-images/a0c853ef-8c9b-4188-873a-65414f906e88/night-of-the-storyteller---page-1-a39e4053-1777005704573.webp",
-      "https://storage.googleapis.com/dala-prod-public-storage/generated-images/a0c853ef-8c9b-4188-873a-65414f906e88/night-of-the-storyteller---page-2-1faf5599-1777005705667.webp"
-    ],
-    notes: "As the fire glows, the elder shares wisdom from the stars.",
-    createdAt: new Date().toISOString(),
-  },
+    enabled: true,
+    deleted: false,
+    audioImportLink: "https://dala-audio-bundle-import.com/warrior-audio",
+    illustrationImportLink: "https://dala-audio-bundle-import.com/warrior-art"
+  }
 ];
