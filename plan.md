@@ -1,26 +1,48 @@
-# Implementation Plan - Illustration Flipping Format Adjustment
+# Enhanced Album Management Plan
 
-The goal is to enhance the visual presentation and transition of illustrations during the page flipping process in the `AudioPlayer` component.
+## Goal
+Improve album management by allowing detailed editing of album metadata, visibility, and granular access control for invited users.
 
-## Proposed Changes
+## 1. Type & Data Schema Updates
+- **`src/types.ts`**: 
+    - Update `Album` interface:
+        - Replace `invitedEmails: string[]` with `invitedAccess: { email: string; enabled: boolean }[]`.
+- **`src/data.ts`**:
+    - Update `initialAlbums` to match the new `invitedAccess` structure.
 
-### 1. Illustration Display Format
-- **Current State**: Illustrations use `object-cover` in a fixed aspect-ratio container (`16/9` or `21/9`), which causes significant cropping for portrait-oriented comic pages.
-- **Adjustment**: 
-    - Change main illustration to `object-contain` to ensure the entire page is visible.
-    - Add a background layer with the same illustration using `object-cover` and high `blur` to provide an immersive, color-matched backdrop that fills the container.
-    - Maintain the aspect ratio container for consistency in the UI layout.
+## 2. Component Enhancements
 
-### 2. Flipping Animation Enhancement
-- **Current State**: Simple horizontal slide (`x: 20` to `x: -20`).
-- **Adjustment**: 
-    - Implement a more sophisticated "page flip" feel using `framer-motion`.
-    - Add subtle 3D rotation (`rotateY`) and scaling during the transition.
-    - Improve the transition timing for a more "physical" feel.
+### Admin Panel (`src/components/AdminPanel.tsx`)
+- **Album Management State**:
+    - Add `editingAlbum: Album | null` state to track which album is being edited.
+- **Album Editor UI**:
+    - Create a detailed edit view for albums.
+    - **Metadata**: Fields for Title, Description, and Cover Image upload.
+    - **Visibility**: Toggles for `isEnabled` and `privacy` (Public/Private).
+    - **Stories List**: Display a read-only list of stories (episodes) currently assigned to the album.
+    - **Access Control**:
+        - List of invited users.
+        - Toggles for each user to enable/disable their specific access.
+        - Option to remove an invited user.
+        - Form to add new invited users.
+- **Actions**:
+    - Add `onUpdateAlbum` to props and implementation.
 
-### 3. Polish & UI
-- Ensure the page indicator and navigation arrows remain clear.
-- Add a subtle vignette or overlay during the transition to enhance the depth.
+### Comic Sidebar (`src/components/ComicSidebar.tsx`)
+- Update rendering to handle the new `invitedAccess` object structure when checking for private access.
 
-## File to Modify
-- `src/components/AudioPlayer.tsx`
+### App Component (`src/App.tsx`)
+- **State Updates**:
+    - Implement `handleUpdateAlbum` to modify existing albums in the state.
+    - Update `accessibleAlbums` useMemo logic to check `invitedAccess.find(u => u.email === userEmail && u.enabled)`.
+- **Prop Passing**:
+    - Pass `onUpdateAlbum` to `AdminPanel`.
+
+## 3. Supabase Integration (Future/Implicit)
+- Ensure functions in `supabase.ts` (if any are added) support the updated schema.
+- (Note: The current implementation seems to be largely local-state driven for the demo, but I will ensure the logic is ready for persistence).
+
+## 4. UI/UX Refinement (using ui-ux-pro-max)
+- Maintain the "Dark Mode" aesthetic with Amber accents.
+- Use `sonner` for feedback on all management actions.
+- Ensure the Admin Panel remains responsive and organized using Tabs/ScrollAreas for long lists.

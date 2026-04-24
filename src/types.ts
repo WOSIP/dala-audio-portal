@@ -1,3 +1,19 @@
+export interface InvitedAccess {
+  email: string;
+  enabled: boolean;
+}
+
+export interface Album {
+  id: string;
+  title: string;
+  description?: string;
+  coverUrl: string;
+  createdAt: string;
+  privacy: 'public' | 'private';
+  invitedAccess: InvitedAccess[];
+  isEnabled: boolean;
+}
+
 export interface Comic {
   id: string;
   title: string;
@@ -10,6 +26,7 @@ export interface Comic {
   deleted: boolean;
   audioImportLink?: string;
   illustrationImportLink?: string;
+  albumId: string;
 }
 
 export type AudioTrackImport = {
@@ -22,3 +39,19 @@ export type IllustrationPartImport = {
   illustrationUrls: string[];
   message: string;
 };
+
+export type AppRole = 'admin' | 'editor' | 'viewer';
+
+export interface UserRole {
+  id: string;
+  userId: string;
+  role: AppRole;
+  email?: string; // Joined from auth.users or profiles
+}
+
+export interface UserProfile {
+  id: string;
+  email?: string;
+  name?: string;
+  avatarUrl?: string;
+}
