@@ -12,6 +12,7 @@ export interface Album {
   privacy: 'public' | 'private';
   invitedAccess: InvitedAccess[];
   isEnabled: boolean;
+  owner_id?: string;
 }
 
 export interface Comic {
@@ -40,7 +41,7 @@ export type IllustrationPartImport = {
   message: string;
 };
 
-export type AppRole = 'admin' | 'editor' | 'viewer';
+export type AppRole = 'superadmin' | 'role3' | 'role2' | 'role1' | 'viewer';
 
 export interface UserRole {
   id: string;

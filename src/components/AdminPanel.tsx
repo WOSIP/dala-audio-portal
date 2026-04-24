@@ -88,6 +88,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState<AppRole | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [allUserRoles, setAllUserRoles] = useState<UserRole[]>([]);
   const [isLoadingRoles, setIsLoadingRoles] = useState(false);
 
@@ -112,7 +113,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     audioImportLink: string;
     illustrationImportLink: string;
     albumId: string;
-  }>(({
+  }>({
     title: "",
     audioUrl: "",
     coverUrl: "",
@@ -120,8 +121,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     notes: "",
     audioImportLink: "",
     illustrationImportLink: "",
-    albumId: albums[0]?.id || ""
-  }));
+    albumId: ""
+  });
 
   const [albumFormData, setAlbumFormData] = useState<{
     title: string;
@@ -143,12 +144,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isProcessingIllustration, setIsProcessingIllustration] = useState(false);
   const [editingComicId, setEditingComicId] = useState<string | null>(null);
 
+  // Filtered Albums based on Role 1
+  const accessibleAlbums = albums.filter(album => {
+    if (userRole === 'superadmin' || userRole === 'role3' || userRole === 'role2') return true;
+    if (userRole === 'role1') return album.owner_id === currentUserId;
+    return false;
+  });
+
+  useEffect(() => {
+    if (accessibleAlbums.length > 0 && !formData.albumId) {
+      setFormData(prev => ({ ...prev, albumId: accessibleAlbums[0].id }));
+    }
+  }, [accessibleAlbums, formData.albumId]);
+
   // Check session and role on mount
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setIsAuthenticated(true);
+        setCurrentUserId(session.user.id);
         fetchUserRole(session.user.id);
       }
     };
@@ -157,10 +172,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         setIsAuthenticated(true);
+        setCurrentUserId(session.user.id);
         fetchUserRole(session.user.id);
       } else {
         setIsAuthenticated(false);
         setUserRole(null);
+        setCurrentUserId(null);
       }
     });
 
@@ -182,10 +199,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const fetchAllUserRoles = async () => {
-    if (userRole !== 'admin') return;
+    if (userRole !== 'superadmin') return;
     
     setIsLoadingRoles(true);
-    // Use the view for cleaner join
     const { data, error } = await supabase
       .from('user_permissions')
       .select('*');
@@ -220,7 +236,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   useEffect(() => {
-    if (activeTab === 'users' && userRole === 'admin') {
+    if (activeTab === 'users' && userRole === 'superadmin') {
       fetchAllUserRoles();
     }
   }, [activeTab, userRole]);
@@ -231,7 +247,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     // Legacy code check fallback
     if (password === "1Fsadmin1966") {
        setIsAuthenticated(true);
-       setUserRole('admin');
+       setUserRole('superadmin');
        toast.success("Welcome back, Administrator!");
        return;
     }
@@ -352,7 +368,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       notes: "",
       audioImportLink: "",
       illustrationImportLink: "",
-      albumId: albums[0]?.id || ""
+      albumId: accessibleAlbums[0]?.id || ""
     });
     setAudioMagicLink("");
     setActiveTab("manage");
@@ -412,9 +428,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const canManageContent = userRole === 'admin' || userRole === 'editor';
+  // RBAC Checks
+  const canManageContent = userRole !== 'viewer';
+  const canCreateAlbum = userRole === 'superadmin' || userRole === 'role3';
+  const canDeleteEpisode = userRole === 'superadmin';
+  const canDeleteAlbum = userRole === 'superadmin';
+  const canManageRoles = userRole === 'superadmin';
 
-  const visibleComics = comics.filter(c => !c.deleted);
+  const visibleComics = comics.filter(c => {
+    if (!c.deleted) {
+      if (userRole === 'superadmin' || userRole === 'role3' || userRole === 'role2') return true;
+      const parentAlbum = albums.find(a => a.id === c.albumId);
+      if (userRole === 'role1') return parentAlbum?.owner_id === currentUserId;
+    }
+    return false;
+  });
 
   const currentEditingAlbum = editingAlbumId ? albums.find(a => a.id === editingAlbumId) : null;
 
@@ -435,7 +463,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <Lock className="w-8 h-8" />
               </div>
               <DialogTitle className="text-3xl font-black tracking-tight text-white">Creator Access</DialogTitle>
-              <p className="text-slate-400 mt-2">Sign in to manage the Dala portal.</p>
+              <p className="text-slate-400 mt-2">Sign in to manage the Dala portal.</p>\
             </DialogHeader>
             
             <form onSubmit={handleLogin} className="space-y-4">
@@ -483,7 +511,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                   <div>
                     <h2 className="text-xl font-black tracking-tight text-white">Creator Studio</h2>
-                    <p className="text-xs text-slate-500">Role: <span className="text-amber-500 uppercase">{userRole || 'Loading...'}</span></p>
+                    <p className="text-xs text-slate-500 uppercase">Role: <span className="text-amber-500">{userRole || 'Loading...'}</span></p>
                   </div>
                 </div>
                 <Button 
@@ -507,7 +535,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <TabsTrigger value="manage" className="rounded-lg data-[state=active]:bg-amber-500 data-[state=active]:text-black font-bold">
                     Catalog
                   </TabsTrigger>
-                  <TabsTrigger value="users" disabled={userRole !== 'admin'} className="rounded-lg data-[state=active]:bg-amber-500 data-[state=active]:text-black font-bold">
+                  <TabsTrigger value="users" disabled={!canManageRoles} className="rounded-lg data-[state=active]:bg-amber-500 data-[state=active]:text-black font-bold">
                     Roles
                   </TabsTrigger>
                 </TabsList>
@@ -568,7 +596,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               <SelectValue placeholder="Choose an album" />
                             </SelectTrigger>
                             <SelectContent className="bg-[#121214] border-white/10 text-white">
-                              {albums.map(album => (
+                              {accessibleAlbums.map(album => (
                                 <SelectItem key={album.id} value={album.id}>{album.title}</SelectItem>
                               ))}
                             </SelectContent>
@@ -743,76 +771,77 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <TabsContent value="albums" className="mt-0">
                    {!editingAlbumId ? (
                      <div className="space-y-8">
-                        <form onSubmit={handleAddAlbumSubmit} className="space-y-4 bg-white/5 border border-white/10 p-6 rounded-2xl">
-                           <h3 className="text-sm font-bold uppercase tracking-widest text-amber-500">Create New Album</h3>
-                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                              <div className="space-y-4">
-                                 <div className="space-y-2">
-                                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Album Title</Label>
-                                    <Input 
-                                       placeholder="e.g. Volume 1: Origins" 
-                                       value={albumFormData.title}
-                                       onChange={(e) => setAlbumFormData({...albumFormData, title: e.target.value})}
-                                       className="h-11 bg-white/5 border-white/10"
-                                    />
-                                 </div>
-                                 <div className="space-y-2">
-                                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Privacy Setting</Label>
-                                    <Select 
-                                      value={albumFormData.privacy} 
-                                      onValueChange={(val: 'public' | 'private') => setAlbumFormData({ ...albumFormData, privacy: val })}
-                                    >
-                                      <SelectTrigger className="h-11 bg-white/5 border-white/10 text-white">
-                                        <div className="flex items-center gap-2">
-                                          {albumFormData.privacy === 'public' ? <Shield className="w-4 h-4 text-emerald-500" /> : <ShieldOff className="w-4 h-4 text-amber-500" />}
-                                          <SelectValue />
-                                        </div>
-                                      </SelectTrigger>
-                                      <SelectContent className="bg-[#121214] border-white/10 text-white">
-                                        <SelectItem value="public">Public (Everyone)</SelectItem>
-                                        <SelectItem value="private">Private (Invited Only)</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                 </div>
-                              </div>
-                              <div className="space-y-2">
-                                 <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Album Cover</Label>
-                                 <div 
-                                    onClick={() => albumCoverInputRef.current?.click()}
-                                    className={cn(
-                                       "relative h-[155px] rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-all overflow-hidden",
-                                       albumFormData.coverUrl ? "border-emerald-500/50 bg-emerald-500/5" : "border-white/10 hover:border-amber-500/50 bg-white/5"
-                                    )}
-                                 >
-                                    {albumFormData.coverUrl ? (
-                                       <>
-                                          <img src={albumFormData.coverUrl} className="absolute inset-0 w-full h-full object-cover opacity-40" alt="" />
-                                          <ImagePlus className="w-6 h-6 text-emerald-500 relative z-10" />
-                                       </>
-                                    ) : (
-                                       <Upload className="w-6 h-6 text-slate-500" />
-                                    )}
-                                    <input 
-                                       type="file" 
-                                       ref={albumCoverInputRef}
-                                       className="hidden" 
-                                       accept="image/*"
-                                       onChange={(e) => handleFileUpload(e, 'album-cover')}
-                                    />
-                                 </div>
-                              </div>
-                           </div>
+                        {canCreateAlbum && (
+                          <form onSubmit={handleAddAlbumSubmit} className="space-y-4 bg-white/5 border border-white/10 p-6 rounded-2xl">
+                             <h3 className="text-sm font-bold uppercase tracking-widest text-amber-500">Create New Album</h3>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-4">
+                                   <div className="space-y-2">
+                                      <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Album Title</Label>
+                                      <Input 
+                                         placeholder="e.g. Volume 1: Origins" 
+                                         value={albumFormData.title}
+                                         onChange={(e) => setAlbumFormData({...albumFormData, title: e.target.value})}
+                                         className="h-11 bg-white/5 border-white/10"
+                                      />
+                                   </div>
+                                   <div className="space-y-2">
+                                      <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Privacy Setting</Label>
+                                      <Select 
+                                        value={albumFormData.privacy} 
+                                        onValueChange={(val: 'public' | 'private') => setAlbumFormData({ ...albumFormData, privacy: val })}
+                                      >
+                                        <SelectTrigger className="h-11 bg-white/5 border-white/10 text-white">
+                                          <div className="flex items-center gap-2">
+                                            {albumFormData.privacy === 'public' ? <Shield className="w-4 h-4 text-emerald-500" /> : <ShieldOff className="w-4 h-4 text-amber-500" />}
+                                            <SelectValue />
+                                          </div>
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-[#121214] border-white/10 text-white">
+                                          <SelectItem value="public">Public (Everyone)</SelectItem>
+                                          <SelectItem value="private">Private (Invited Only)</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                   </div>
+                                </div>
+                                <div className="space-y-2">
+                                   <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Album Cover</Label>
+                                   <div 
+                                      onClick={() => albumCoverInputRef.current?.click()}
+                                      className={cn(
+                                         "relative h-[155px] rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-all overflow-hidden",
+                                         albumFormData.coverUrl ? "border-emerald-500/50 bg-emerald-500/5" : "border-white/10 hover:border-amber-500/50 bg-white/5"
+                                      )}
+                                   >
+                                      {albumFormData.coverUrl ? (
+                                         <>
+                                            <img src={albumFormData.coverUrl} className="absolute inset-0 w-full h-full object-cover opacity-40" alt="" />
+                                            <ImagePlus className="w-6 h-6 text-emerald-500 relative z-10" />
+                                         </>
+                                      ) : (
+                                         <Upload className="w-6 h-6 text-slate-500" />
+                                      )}
+                                      <input 
+                                         type="file" 
+                                         ref={albumCoverInputRef}
+                                         className="hidden" 
+                                         accept="image/*"
+                                         onChange={(e) => handleFileUpload(e, 'album-cover')}
+                                      />
+                                   </div>
+                                </div>
+                             </div>
 
-                           <Button type="submit" className="w-full bg-amber-500 text-black hover:bg-amber-400 font-bold h-11 rounded-xl">
-                              Create Album
-                           </Button>
-                        </form>
+                             <Button type="submit" className="w-full bg-amber-500 text-black hover:bg-amber-400 font-bold h-11 rounded-xl">
+                                Create Album
+                             </Button>
+                          </form>
+                        )}
 
-                        {/* Album Management Section */}
                         <div className="space-y-4">
                           <h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Manage Albums</h3>
                           <div className="grid gap-3">
-                            {albums.map((album) => (
+                            {accessibleAlbums.map((album) => (
                               <div 
                                 key={album.id} 
                                 className={cn(
@@ -825,7 +854,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <h4 className="font-bold text-white truncate">{album.title}</h4>
-                                  <p className="text-[10px] text-slate-500 uppercase">{album.privacy} \u2022 {comics.filter(c => c.albumId === album.id && !c.deleted).length} Episodes</p>
+                                  <p className="text-[10px] text-slate-500 uppercase">{album.privacy} • {comics.filter(c => c.albumId === album.id && !c.deleted).length} Episodes</p>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <Button 
@@ -844,16 +873,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   >
                                     {album.isEnabled ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
                                   </Button>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon"
-                                    onClick={() => {
-                                      if(confirm("Delete this album and all its settings?")) onDeleteAlbum(album.id);
-                                    }}
-                                    className="h-10 w-10 rounded-xl text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
-                                  >
-                                    <Trash2 className="w-5 h-5" />
-                                  </Button>
+                                  {canDeleteAlbum && (
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon"
+                                      onClick={() => {
+                                        if(confirm("Delete this album and all its settings?")) onDeleteAlbum(album.id);
+                                      }}
+                                      className="h-10 w-10 rounded-xl text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
+                                    >
+                                      <Trash2 className="w-5 h-5" />
+                                    </Button>
+                                  )}
                                 </div>
                               </div>
                             ))}
@@ -895,7 +926,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <Label className="text-xs font-bold text-slate-500 uppercase">Album Title</Label>
                                     <Input 
                                       value={currentEditingAlbum?.title}
-                                      onChange={(e) => onUpdateAlbum(editingAlbumId, { title: e.target.value })}
+                                      onChange={(e) => onUpdateAlbum(editingAlbumId!, { title: e.target.value })}
                                       className="bg-white/5 border-white/10 text-white font-bold"
                                     />
                                  </div>
@@ -904,7 +935,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                       <Label className="text-xs font-bold text-slate-500 uppercase">Privacy</Label>
                                       <Select 
                                         value={currentEditingAlbum?.privacy} 
-                                        onValueChange={(val: 'public' | 'private') => onUpdateAlbum(editingAlbumId, { privacy: val })}
+                                        onValueChange={(val: 'public' | 'private') => onUpdateAlbum(editingAlbumId!, { privacy: val })}
                                       >
                                         <SelectTrigger className="bg-white/5 border-white/10 text-white">
                                           <SelectValue />
@@ -918,7 +949,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <div className="flex items-center gap-3 pt-6">
                                        <Switch 
                                          checked={currentEditingAlbum?.isEnabled}
-                                         onCheckedChange={(checked) => onUpdateAlbum(editingAlbumId, { isEnabled: checked })}
+                                         onCheckedChange={(checked) => onUpdateAlbum(editingAlbumId!, { isEnabled: checked })}
                                        />
                                        <span className="text-xs font-bold text-white">Enabled</span>
                                     </div>
@@ -930,7 +961,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               <Label className="text-xs font-bold text-slate-500 uppercase">Description</Label>
                               <Textarea 
                                 value={currentEditingAlbum?.description}
-                                onChange={(e) => onUpdateAlbum(editingAlbumId, { description: e.target.value })}
+                                onChange={(e) => onUpdateAlbum(editingAlbumId!, { description: e.target.value })}
                                 className="bg-white/5 border-white/10 text-white min-h-[80px]"
                                 placeholder="Describe this collection..."
                               />
@@ -1050,16 +1081,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 >
                                   {comic.enabled ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
                                 </Button>
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon"
-                                  onClick={() => {
-                                    if(confirm("Are you sure?")) onDeleteComic(comic.id);
-                                  }}
-                                  className="h-10 w-10 rounded-xl text-rose-500"
-                                >
-                                  <Trash2 className="w-5 h-5" />
-                                </Button>
+                                {canDeleteEpisode && (
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    onClick={() => {
+                                      if(confirm("Are you sure?")) onDeleteComic(comic.id);
+                                    }}
+                                    className="h-10 w-10 rounded-xl text-rose-500"
+                                  >
+                                    <Trash2 className="w-5 h-5" />
+                                  </Button>
+                                )}
                               </>
                             )}
                           </div>
@@ -1104,8 +1137,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="bg-[#121214] border-white/10 text-white">
-                                <SelectItem value="admin">Admin</SelectItem>
-                                <SelectItem value="editor">Editor</SelectItem>
+                                <SelectItem value="superadmin">Superadmin</SelectItem>
+                                <SelectItem value="role3">Role 3</SelectItem>
+                                <SelectItem value="role2">Role 2</SelectItem>
+                                <SelectItem value="role1">Role 1</SelectItem>
                                 <SelectItem value="viewer">Viewer</SelectItem>
                               </SelectContent>
                             </Select>

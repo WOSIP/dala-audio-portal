@@ -1,48 +1,69 @@
-# Enhanced Album Management Plan
+# Project Plan: User Role Management Implementation
 
-## Goal
-Improve album management by allowing detailed editing of album metadata, visibility, and granular access control for invited users.
+This plan outlines the steps to implement comprehensive user role management within the existing project. The focus is on integrating new features for managing users, roles, and their permissions, while ensuring existing functionalities remain intact.
 
-## 1. Type & Data Schema Updates
-- **`src/types.ts`**: 
-    - Update `Album` interface:
-        - Replace `invitedEmails: string[]` with `invitedAccess: { email: string; enabled: boolean }[]`.
-- **`src/data.ts`**:
-    - Update `initialAlbums` to match the new `invitedAccess` structure.
+## 1. Analysis of Existing Codebase
 
-## 2. Component Enhancements
+*   **Frontend:**
+    *   Review the structure and state management of React components, particularly `src/components/AdminPanel.tsx`.
+    *   Understand how existing role-based access control is handled.
+*   **Backend (Supabase):**
+    *   Examine `src/lib/supabase.ts` for database interaction patterns.
+    *   Analyze existing migration files (`supabase/migrations/`) related to roles and security policies.
+    *   Identify data models and RLS policies relevant to user and role management.
+*   **Type Definitions:**
+    *   Review `src/types.ts` for existing type structures.
 
-### Admin Panel (`src/components/AdminPanel.tsx`)
-- **Album Management State**:
-    - Add `editingAlbum: Album | null` state to track which album is being edited.
-- **Album Editor UI**:
-    - Create a detailed edit view for albums.
-    - **Metadata**: Fields for Title, Description, and Cover Image upload.
-    - **Visibility**: Toggles for `isEnabled` and `privacy` (Public/Private).
-    - **Stories List**: Display a read-only list of stories (episodes) currently assigned to the album.
-    - **Access Control**:
-        - List of invited users.
-        - Toggles for each user to enable/disable their specific access.
-        - Option to remove an invited user.
-        - Form to add new invited users.
-- **Actions**:
-    - Add `onUpdateAlbum` to props and implementation.
+## 2. Frontend Implementation
 
-### Comic Sidebar (`src/components/ComicSidebar.tsx`)
-- Update rendering to handle the new `invitedAccess` object structure when checking for private access.
+*   **New Components:**
+    *   Develop UI components for:
+        *   User list and details view.
+        *   Role assignment interface (e.g., dropdowns, checkboxes).
+        *   User creation/editing forms.
+*   **Modification of Existing Components:**
+    *   Update `src/components/AdminPanel.tsx` to include new sections/features for user and role management.
+    *   Integrate role management into components where user permissions are checked.
+*   **Client-Side Logic:**
+    *   Implement functions for fetching, creating, updating, and deleting users and roles via Supabase client.
+    *   Develop logic to display user-specific information and permissions.
 
-### App Component (`src/App.tsx`)
-- **State Updates**:
-    - Implement `handleUpdateAlbum` to modify existing albums in the state.
-    - Update `accessibleAlbums` useMemo logic to check `invitedAccess.find(u => u.email === userEmail && u.enabled)`.
-- **Prop Passing**:
-    - Pass `onUpdateAlbum` to `AdminPanel`.
+## 3. Update Type Definitions
 
-## 3. Supabase Integration (Future/Implicit)
-- Ensure functions in `supabase.ts` (if any are added) support the updated schema.
-- (Note: The current implementation seems to be largely local-state driven for the demo, but I will ensure the logic is ready for persistence).
+*   **`src/types.ts`:**
+    *   Define new TypeScript interfaces or types for:
+        *   `User` object (including ID, email, custom claims/roles).
+        *   `Role` object (e.g., 'Superadmin', 'Role 1', 'Role 2', 'Role 3').
+        *   `UserRoleAssignment` or similar for mapping users to roles.
 
-## 4. UI/UX Refinement (using ui-ux-pro-max)
-- Maintain the "Dark Mode" aesthetic with Amber accents.
-- Use `sonner` for feedback on all management actions.
-- Ensure the Admin Panel remains responsive and organized using Tabs/ScrollAreas for long lists.
+## 4. Database Schema and Policies (Supabase)
+
+*   **Schema Modifications:**
+    *   If necessary, create new tables or alter existing ones in Supabase to store user-role mappings (e.g., a `user_roles` table).
+    *   Ensure data integrity and foreign key constraints.
+*   **Row Level Security (RLS):**
+    *   Implement or update RLS policies on relevant tables (e.g., `users`, custom tables) to ensure that users can only access or modify data according to their assigned roles.
+    *   Pay close attention to policies related to user and role management itself (who can manage users/roles).
+*   **Edge Functions (Optional):**
+    *   If complex business logic is required (e.g., advanced permission checks, bulk updates), consider creating Supabase Edge Functions.
+
+## 5. Integration and Backend Logic
+
+*   **Supabase Client Integration:**
+    *   Connect the frontend components to the Supabase backend using the defined API endpoints or direct client calls.
+    *   Handle asynchronous operations, including error handling and loading states.
+*   **Data Synchronization:**
+    *   Ensure consistent data flow and state management between the frontend and Supabase.
+
+## 6. Validation and Testing
+
+*   **Unit and Integration Tests:**
+    *   Write tests for new frontend components and backend logic.
+*   **Functional Testing:**
+    *   Verify all user and role management features function as expected.
+    *   Test different user roles and their associated permissions.
+    *   Confirm that existing features (album/story management) are not negatively impacted.
+*   **Security Testing:**
+    *   Validate RLS policies are correctly enforced.
+*   **Build Validation:**
+    *   Execute `validate_build` tool to confirm overall application stability.
