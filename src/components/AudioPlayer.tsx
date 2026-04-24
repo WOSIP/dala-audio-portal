@@ -35,6 +35,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const [volume, setVolume] = useState(80);
   const [isMuted, setIsMuted] = useState(false);
   const [currentIllustrationIndex, setCurrentIllustrationIndex] = useState(0);
+  const [direction, setDirection] = useState(0);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -45,9 +46,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   // Reset page index and audio when switching comics
   useEffect(() => {
     setCurrentIllustrationIndex(0);
+    setDirection(0);
     if (audioRef.current) {
       audioRef.current.src = currentComic.audioUrl;
-      // If was already playing, try to play the new one
       if (isPlaying) {
         audioRef.current.play().catch(err => console.error("Playback failed:", err));
       }
@@ -55,10 +56,12 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   }, [currentComic.id, currentComic.audioUrl]);
 
   const handleNextPage = () => {
+    setDirection(1);
     setCurrentIllustrationIndex((prev) => (prev + 1) % pages.length);
   };
 
   const handlePreviousPage = () => {
+    setDirection(-1);
     setCurrentIllustrationIndex((prev) => (prev - 1 + pages.length) % pages.length);
   };
 
@@ -129,33 +132,80 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     }
   };
 
+  // Animation variants for the page flip effect
+  const variants = {
+    enter: (direction: number) => ({
+      x: direction > 0 ? 300 : -300,
+      opacity: 0,
+      scale: 0.9,
+      rotateY: direction > 0 ? 45 : -45,
+    }),
+    center: {
+      zIndex: 1,
+      x: 0,
+      opacity: 1,
+      scale: 1,
+      rotateY: 0,
+    },
+    exit: (direction: number) => ({
+      zIndex: 0,
+      x: direction < 0 ? 300 : -300,
+      opacity: 0,
+      scale: 0.9,
+      rotateY: direction < 0 ? 45 : -45,
+    })
+  };
+
   return (
-    <Card className="w-full bg-white/5 backdrop-blur-md border-white/10 shadow-2xl p-4 lg:p-8 flex flex-col gap-8 rounded-3xl">
+    <Card className="w-full bg-white/5 backdrop-blur-md border-white/10 shadow-2xl p-4 lg:p-8 flex flex-col gap-8 rounded-3xl overflow-hidden">
       <div className="flex flex-col gap-8">
         {/* Illustration Swiper Area */}
-        <div className="relative w-full aspect-[16/9] md:aspect-[21/9] rounded-2xl overflow-hidden bg-black/40 border border-white/5 group">
-          <AnimatePresence mode="wait">
+        <div 
+          className="relative w-full aspect-[4/3] md:aspect-[16/9] rounded-2xl overflow-hidden bg-black/60 border border-white/5 group shadow-inner"
+          style={{ perspective: "1000px" }}
+        >
+          <AnimatePresence initial={false} custom={direction} mode="popLayout">
             <motion.div
               key={`${currentComic.id}-${currentIllustrationIndex}`}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.4, ease: "easeInOut" }}
-              className="absolute inset-0"
+              custom={direction}
+              variants={variants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{
+                x: { type: "spring", stiffness: 300, damping: 30 },
+                opacity: { duration: 0.2 },
+                rotateY: { duration: 0.4 },
+                scale: { duration: 0.4 }
+              }}
+              className="absolute inset-0 w-full h-full"
             >
-              <img 
-                src={pages[currentIllustrationIndex]} 
-                alt={`${currentComic.title} - Page ${currentIllustrationIndex + 1}`}
-                className="w-full h-full object-cover"
-              />
+              {/* Blurred Background Layer for "Format Adjustment" */}
+              <div className="absolute inset-0 z-0 overflow-hidden">
+                <img 
+                  src={pages[currentIllustrationIndex]} 
+                  alt=""
+                  className="w-full h-full object-cover blur-3xl opacity-40 scale-110"
+                  aria-hidden="true"
+                />
+              </div>
+
+              {/* Main Illustration Layer */}
+              <div className="relative z-10 w-full h-full flex items-center justify-center p-4 md:p-8">
+                <img 
+                  src={pages[currentIllustrationIndex]} 
+                  alt={`${currentComic.title} - Page ${currentIllustrationIndex + 1}`}
+                  className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
+                />
+              </div>
             </motion.div>
           </AnimatePresence>
 
           {/* Overlays and Controls */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 pointer-events-none z-20" />
           
           {/* Page Indicator */}
-          <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+          <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 z-30">
             <BookOpen className="w-4 h-4 text-amber-500" />
             <span className="text-[10px] font-bold tracking-widest text-white uppercase">
               Page {currentIllustrationIndex + 1} / {pages.length}
@@ -164,12 +214,12 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
           {/* Navigation Arrows (For Pages) */}
           {pages.length > 1 && (
-            <div className="absolute inset-y-0 inset-x-4 flex items-center justify-between pointer-events-none">
+            <div className="absolute inset-y-0 inset-x-4 flex items-center justify-between pointer-events-none z-30">
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={handlePreviousPage}
-                className="pointer-events-auto h-12 w-12 rounded-full bg-black/40 hover:bg-amber-500 text-white border-none shadow-xl transition-all duration-200"
+                className="pointer-events-auto h-12 w-12 rounded-full bg-black/40 hover:bg-amber-500 text-white border-none shadow-xl transition-all duration-200 backdrop-blur-sm"
                 title="Previous Page"
               >
                 <ChevronLeft className="w-6 h-6" />
@@ -178,7 +228,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 variant="ghost"
                 size="icon"
                 onClick={handleNextPage}
-                className="pointer-events-auto h-12 w-12 rounded-full bg-black/40 hover:bg-amber-500 text-white border-none shadow-xl transition-all duration-200"
+                className="pointer-events-auto h-12 w-12 rounded-full bg-black/40 hover:bg-amber-500 text-white border-none shadow-xl transition-all duration-200 backdrop-blur-sm"
                 title="Next Page"
               >
                 <ChevronRight className="w-6 h-6" />
