@@ -20,11 +20,24 @@ function App() {
     const fetchData = async () => {
       setIsLoading(true);
       try {
+        // Fetch albums and joined profiles (if possible) or fetch them separately
         const { data: albumsData, error: albumsError } = await supabase
           .from('albums')
           .select('*, album_invitations(*)');
         
         if (albumsError) throw albumsError;
+
+        // Fetch profiles for the album owners to get author info
+        const ownerIds = Array.from(new Set((albumsData || []).map((a: any) => a.owner_id)));
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .in('id', ownerIds);
+
+        const profilesMap = (profilesData || []).reduce((acc: any, p: any) => {
+          acc[p.id] = p;
+          return acc;
+        }, {});
 
         const mappedAlbums: Album[] = (albumsData || []).map((a: any) => ({
           id: a.id,
@@ -34,6 +47,13 @@ function App() {
           createdAt: a.created_at,
           privacy: a.privacy,
           isEnabled: a.is_enabled,
+          author: profilesMap[a.owner_id] ? {
+            name: profilesMap[a.owner_id].full_name || "Unknown Author",
+            avatarUrl: profilesMap[a.owner_id].avatar_url
+          } : {
+            name: "Gebeya Dala",
+            avatarUrl: ""
+          },
           invitedAccess: (a.album_invitations || []).map((i: any) => ({
             email: i.email,
             enabled: i.enabled
@@ -131,6 +151,10 @@ function App() {
   const currentComic = useMemo(() => {
     return activeComics.find(c => c.id === currentComicId) || activeComics[0];
   }, [activeComics, currentComicId]);
+
+  const currentAlbum = useMemo(() => {
+    return albums.find(a => a.id === currentAlbumId);
+  }, [albums, currentAlbumId]);
 
   const currentIndex = useMemo(() => {
     return activeComics.findIndex(c => c.id === currentComic?.id);
@@ -437,6 +461,7 @@ function App() {
                     currentComic={currentComic} 
                     onNextComic={handleNextComic}
                     onPreviousComic={handlePreviousComic}
+                    author={currentAlbum?.author}
                   />
                   
                   <div className="mt-12">

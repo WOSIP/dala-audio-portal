@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Comic, Album, AppRole, UserRole, InvitedAccess } from "../types";
-import { supabase } from "../lib/supabase";
+import { Comic, Album, AppRole, UserManagementRecord, InvitedAccess } from "../types";
+import { supabase, updateUserStatus, updateUserProfile, createUserByEmail, updateUserPassword } from "../lib/supabase";
 import { 
   Lock, 
   PlusCircle,
@@ -31,7 +31,10 @@ import {
   UserCheck,
   Edit,
   ArrowLeft,
-  UserPlus
+  UserPlus,
+  MoreVertical,
+  Circle,
+  Key
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -45,6 +48,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "./ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -53,10 +57,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "./ui/select";
 import { cn } from "@/lib/utils";
 import { extractAudioUrl } from "../utils/audio-extractor";
 import { extractPagesFromPDF } from "../utils/pdf-handler";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface AdminPanelProps {
   onAddComic: (comic: Omit<Comic, "id" | "createdAt" | "enabled" | "deleted">) => void;
@@ -88,9 +93,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState<AppRole | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [allUserRoles, setAllUserRoles] = useState<UserRole[]>([]);
-  const [isLoadingRoles, setIsLoadingRoles] = useState(false);
+  const [allUsers, setAllUsers] = useState<UserManagementRecord[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -103,6 +107,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const audioInputRef = useRef<HTMLInputElement>(null);
   const albumCoverInputRef = useRef<HTMLInputElement>(null);
   const editAlbumCoverInputRef = useRef<HTMLInputElement>(null);
+
+  // User Management State
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [isEditUserOpen, setIsEditUserOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserManagementRecord | null>(null);
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserRole, setNewUserRole] = useState<AppRole>("viewer");
+  
+  // Add User specific password state
+  const [addUserPassword, setAddUserPassword] = useState("");
+  const [addUserConfirmPassword, setAddUserConfirmPassword] = useState("");
+  const [showAddUserPassword, setShowAddUserPassword] = useState(false);
+
+  // Password Management State (for editing)
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [confirmUserPassword, setConfirmUserPassword] = useState("");
+  const [showUserPassword, setShowUserPassword] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   const [formData, setFormData] = useState<{
     title: string;
@@ -121,7 +144,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     notes: "",
     audioImportLink: "",
     illustrationImportLink: "",
-    albumId: ""
+    albumId: albums[0]?.id || ""
   });
 
   const [albumFormData, setAlbumFormData] = useState<{
@@ -144,26 +167,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isProcessingIllustration, setIsProcessingIllustration] = useState(false);
   const [editingComicId, setEditingComicId] = useState<string | null>(null);
 
-  // Filtered Albums based on Role 1
-  const accessibleAlbums = albums.filter(album => {
-    if (userRole === 'superadmin' || userRole === 'role3' || userRole === 'role2') return true;
-    if (userRole === 'role1') return album.owner_id === currentUserId;
-    return false;
-  });
-
-  useEffect(() => {
-    if (accessibleAlbums.length > 0 && !formData.albumId) {
-      setFormData(prev => ({ ...prev, albumId: accessibleAlbums[0].id }));
-    }
-  }, [accessibleAlbums, formData.albumId]);
-
   // Check session and role on mount
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setIsAuthenticated(true);
-        setCurrentUserId(session.user.id);
         fetchUserRole(session.user.id);
       }
     };
@@ -172,12 +181,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         setIsAuthenticated(true);
-        setCurrentUserId(session.user.id);
         fetchUserRole(session.user.id);
       } else {
         setIsAuthenticated(false);
         setUserRole(null);
-        setCurrentUserId(null);
       }
     });
 
@@ -198,56 +205,148 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setUserRole(data.role as AppRole);
   };
 
-  const fetchAllUserRoles = async () => {
-    if (userRole !== 'superadmin') return;
+  const fetchAllUsers = async () => {
+    if (userRole !== 'admin' && userRole !== 'superadmin') return;
     
-    setIsLoadingRoles(true);
+    setIsLoadingUsers(true);
     const { data, error } = await supabase
       .from('user_permissions')
       .select('*');
 
     if (error) {
-      toast.error("Failed to fetch user roles");
+      toast.error("Failed to fetch users");
       console.error(error);
     } else {
-      const mappedRoles: UserRole[] = (data || []).map((item: any) => ({
-        id: item.id,
+      const mappedUsers: UserManagementRecord[] = (data || []).map((item: any) => ({
+        id: item.user_id || item.profile_id || item.id,
         userId: item.user_id,
         role: item.role,
-        email: item.email || 'No email found'
+        email: item.email || 'No email found',
+        name: item.name || item.full_name || '',
+        isEnabled: item.is_enabled ?? true,
+        createdAt: item.created_at || new Date().toISOString()
       }));
-      setAllUserRoles(mappedRoles);
+      setAllUsers(mappedUsers);
     }
-    setIsLoadingRoles(false);
+    setIsLoadingUsers(false);
   };
 
   const handleUpdateRole = async (userId: string, newRole: AppRole) => {
-    const { error } = await supabase
-      .from('user_roles')
-      .update({ role: newRole })
-      .eq('user_id', userId);
-
-    if (error) {
-      toast.error("Failed to update role");
-    } else {
+    try {
+      await updateUserProfile(userId, { role: newRole });
       toast.success("Role updated successfully");
-      fetchAllUserRoles();
+      fetchAllUsers();
+    } catch (error) {
+      toast.error("Failed to update role");
     }
   };
 
+  const handleToggleUserEnabled = async (userId: string, currentStatus: boolean) => {
+    try {
+      await updateUserStatus(userId, !currentStatus);
+      toast.success(`User ${!currentStatus ? 'enabled' : 'disabled'} successfully`);
+      // Update local state immediately for better UX
+      setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, isEnabled: !currentStatus } : u));
+    } catch (error) {
+      toast.error("Failed to update user status");
+    }
+  };
+
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUserEmail) {
+      toast.error("Email is required");
+      return;
+    }
+
+    if (addUserPassword && addUserPassword !== addUserConfirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    if (addUserPassword && addUserPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+
+    try {
+      await createUserByEmail(newUserEmail, newUserName, newUserRole, addUserPassword);
+      toast.success("User created successfully");
+      setIsAddUserOpen(false);
+      setNewUserEmail("");
+      setNewUserName("");
+      setNewUserRole("viewer");
+      setAddUserPassword("");
+      setAddUserConfirmPassword("");
+      fetchAllUsers();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to create user");
+    }
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+
+    setIsUpdatingPassword(true);
+    try {
+      // Update Name and Role
+      await updateUserProfile(editingUser.id, {
+        name: newUserName,
+        role: newUserRole
+      });
+
+      // Update Password if provided
+      if (newUserPassword) {
+        if (newUserPassword !== confirmUserPassword) {
+          toast.error("Passwords do not match");
+          setIsUpdatingPassword(false);
+          return;
+        }
+        if (newUserPassword.length < 6) {
+          toast.error("Password must be at least 6 characters");
+          setIsUpdatingPassword(false);
+          return;
+        }
+        await updateUserPassword(editingUser.id, newUserPassword);
+        toast.success("Profile and password updated");
+      } else {
+        toast.success("User updated successfully");
+      }
+
+      setIsEditUserOpen(false);
+      setEditingUser(null);
+      setNewUserPassword("");
+      setConfirmUserPassword("");
+      fetchAllUsers();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update user");
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
+
+  const openEditModal = (user: UserManagementRecord) => {
+    setEditingUser(user);
+    setNewUserName(user.name || "");
+    setNewUserRole(user.role);
+    setNewUserPassword("");
+    setConfirmUserPassword("");
+    setIsEditUserOpen(true);
+  };
+
   useEffect(() => {
-    if (activeTab === 'users' && userRole === 'superadmin') {
-      fetchAllUserRoles();
+    if (activeTab === 'users' && (userRole === 'admin' || userRole === 'superadmin')) {
+      fetchAllUsers();
     }
   }, [activeTab, userRole]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Legacy code check fallback
     if (password === "1Fsadmin1966") {
        setIsAuthenticated(true);
-       setUserRole('superadmin');
+       setUserRole('admin');
        toast.success("Welcome back, Administrator!");
        return;
     }
@@ -368,7 +467,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       notes: "",
       audioImportLink: "",
       illustrationImportLink: "",
-      albumId: accessibleAlbums[0]?.id || ""
+      albumId: albums[0]?.id || ""
     });
     setAudioMagicLink("");
     setActiveTab("manage");
@@ -428,21 +527,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  // RBAC Checks
-  const canManageContent = userRole !== 'viewer';
-  const canCreateAlbum = userRole === 'superadmin' || userRole === 'role3';
-  const canDeleteEpisode = userRole === 'superadmin';
-  const canDeleteAlbum = userRole === 'superadmin';
-  const canManageRoles = userRole === 'superadmin';
+  const canManageContent = userRole === 'admin' || userRole === 'superadmin' || userRole === 'editor';
 
-  const visibleComics = comics.filter(c => {
-    if (!c.deleted) {
-      if (userRole === 'superadmin' || userRole === 'role3' || userRole === 'role2') return true;
-      const parentAlbum = albums.find(a => a.id === c.albumId);
-      if (userRole === 'role1') return parentAlbum?.owner_id === currentUserId;
-    }
-    return false;
-  });
+  const visibleComics = comics.filter(c => !c.deleted);
 
   const currentEditingAlbum = editingAlbumId ? albums.find(a => a.id === editingAlbumId) : null;
 
@@ -463,7 +550,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <Lock className="w-8 h-8" />
               </div>
               <DialogTitle className="text-3xl font-black tracking-tight text-white">Creator Access</DialogTitle>
-              <p className="text-slate-400 mt-2">Sign in to manage the Dala portal.</p>\
+              <p className="text-slate-400 mt-2">Sign in to manage the Dala portal.</p>
             </DialogHeader>
             
             <form onSubmit={handleLogin} className="space-y-4">
@@ -511,7 +598,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                   <div>
                     <h2 className="text-xl font-black tracking-tight text-white">Creator Studio</h2>
-                    <p className="text-xs text-slate-500 uppercase">Role: <span className="text-amber-500">{userRole || 'Loading...'}</span></p>
+                    <p className="text-xs text-slate-500">Role: <span className="text-amber-500 uppercase">{userRole || 'Loading...'}</span></p>
                   </div>
                 </div>
                 <Button 
@@ -535,8 +622,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <TabsTrigger value="manage" className="rounded-lg data-[state=active]:bg-amber-500 data-[state=active]:text-black font-bold">
                     Catalog
                   </TabsTrigger>
-                  <TabsTrigger value="users" disabled={!canManageRoles} className="rounded-lg data-[state=active]:bg-amber-500 data-[state=active]:text-black font-bold">
-                    Roles
+                  <TabsTrigger value="users" disabled={userRole !== 'admin' && userRole !== 'superadmin'} className="rounded-lg data-[state=active]:bg-amber-500 data-[state=active]:text-black font-bold">
+                    Users
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
@@ -596,7 +683,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               <SelectValue placeholder="Choose an album" />
                             </SelectTrigger>
                             <SelectContent className="bg-[#121214] border-white/10 text-white">
-                              {accessibleAlbums.map(album => (
+                              {albums.map(album => (
                                 <SelectItem key={album.id} value={album.id}>{album.title}</SelectItem>
                               ))}
                             </SelectContent>
@@ -771,77 +858,76 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <TabsContent value="albums" className="mt-0">
                    {!editingAlbumId ? (
                      <div className="space-y-8">
-                        {canCreateAlbum && (
-                          <form onSubmit={handleAddAlbumSubmit} className="space-y-4 bg-white/5 border border-white/10 p-6 rounded-2xl">
-                             <h3 className="text-sm font-bold uppercase tracking-widest text-amber-500">Create New Album</h3>
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-4">
-                                   <div className="space-y-2">
-                                      <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Album Title</Label>
-                                      <Input 
-                                         placeholder="e.g. Volume 1: Origins" 
-                                         value={albumFormData.title}
-                                         onChange={(e) => setAlbumFormData({...albumFormData, title: e.target.value})}
-                                         className="h-11 bg-white/5 border-white/10"
-                                      />
-                                   </div>
-                                   <div className="space-y-2">
-                                      <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Privacy Setting</Label>
-                                      <Select 
-                                        value={albumFormData.privacy} 
-                                        onValueChange={(val: 'public' | 'private') => setAlbumFormData({ ...albumFormData, privacy: val })}
-                                      >
-                                        <SelectTrigger className="h-11 bg-white/5 border-white/10 text-white">
-                                          <div className="flex items-center gap-2">
-                                            {albumFormData.privacy === 'public' ? <Shield className="w-4 h-4 text-emerald-500" /> : <ShieldOff className="w-4 h-4 text-amber-500" />}
-                                            <SelectValue />
-                                          </div>
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-[#121214] border-white/10 text-white">
-                                          <SelectItem value="public">Public (Everyone)</SelectItem>
-                                          <SelectItem value="private">Private (Invited Only)</SelectItem>
-                                        </SelectContent>
-                                      </Select>
-                                   </div>
-                                </div>
-                                <div className="space-y-2">
-                                   <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Album Cover</Label>
-                                   <div 
-                                      onClick={() => albumCoverInputRef.current?.click()}
-                                      className={cn(
-                                         "relative h-[155px] rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-all overflow-hidden",
-                                         albumFormData.coverUrl ? "border-emerald-500/50 bg-emerald-500/5" : "border-white/10 hover:border-amber-500/50 bg-white/5"
-                                      )}
-                                   >
-                                      {albumFormData.coverUrl ? (
-                                         <>
-                                            <img src={albumFormData.coverUrl} className="absolute inset-0 w-full h-full object-cover opacity-40" alt="" />
-                                            <ImagePlus className="w-6 h-6 text-emerald-500 relative z-10" />
-                                         </>
-                                      ) : (
-                                         <Upload className="w-6 h-6 text-slate-500" />
-                                      )}
-                                      <input 
-                                         type="file" 
-                                         ref={albumCoverInputRef}
-                                         className="hidden" 
-                                         accept="image/*"
-                                         onChange={(e) => handleFileUpload(e, 'album-cover')}
-                                      />
-                                   </div>
-                                </div>
-                             </div>
+                        <form onSubmit={handleAddAlbumSubmit} className="space-y-4 bg-white/5 border border-white/10 p-6 rounded-2xl">
+                           <h3 className="text-sm font-bold uppercase tracking-widest text-amber-500">Create New Album</h3>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div className="space-y-4">
+                                 <div className="space-y-2">
+                                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Album Title</Label>
+                                    <Input 
+                                       placeholder="e.g. Volume 1: Origins" 
+                                       value={albumFormData.title}
+                                       onChange={(e) => setAlbumFormData({...albumFormData, title: e.target.value})}
+                                       className="h-11 bg-white/5 border-white/10"
+                                    />
+                                 </div>
+                                 <div className="space-y-2">
+                                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Privacy Setting</Label>
+                                    <Select 
+                                      value={albumFormData.privacy} 
+                                      onValueChange={(val: 'public' | 'private') => setAlbumFormData({ ...albumFormData, privacy: val })}
+                                    >
+                                      <SelectTrigger className="h-11 bg-white/5 border-white/10 text-white">
+                                        <div className="flex items-center gap-2">
+                                          {albumFormData.privacy === 'public' ? <Shield className="w-4 h-4 text-emerald-500" /> : <ShieldOff className="w-4 h-4 text-amber-500" />}
+                                          <SelectValue />
+                                        </div>
+                                      </SelectTrigger>
+                                      <SelectContent className="bg-[#121214] border-white/10 text-white">
+                                        <SelectItem value="public">Public (Everyone)</SelectItem>
+                                        <SelectItem value="private">Private (Invited Only)</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                 </div>
+                              </div>
+                              <div className="space-y-2">
+                                 <Label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Album Cover</Label>
+                                 <div 
+                                    onClick={() => albumCoverInputRef.current?.click()}
+                                    className={cn(
+                                       "relative h-[155px] rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-all overflow-hidden",
+                                       albumFormData.coverUrl ? "border-emerald-500/50 bg-emerald-500/5" : "border-white/10 hover:border-amber-500/50 bg-white/5"
+                                    )}
+                                 >
+                                    {albumFormData.coverUrl ? (
+                                       <>
+                                          <img src={albumFormData.coverUrl} className="absolute inset-0 w-full h-full object-cover opacity-40" alt="" />
+                                          <ImagePlus className="w-6 h-6 text-emerald-500 relative z-10" />
+                                       </>
+                                    ) : (
+                                       <Upload className="w-6 h-6 text-slate-500" />
+                                    )}
+                                    <input 
+                                       type="file" 
+                                       ref={albumCoverInputRef}
+                                       className="hidden" 
+                                       accept="image/*"
+                                       onChange={(e) => handleFileUpload(e, 'album-cover')}
+                                    />
+                                 </div>
+                              </div>
+                           </div>
 
-                             <Button type="submit" className="w-full bg-amber-500 text-black hover:bg-amber-400 font-bold h-11 rounded-xl">
-                                Create Album
-                             </Button>
-                          </form>
-                        )}
+                           <Button type="submit" className="w-full bg-amber-500 text-black hover:bg-amber-400 font-bold h-11 rounded-xl">
+                              Create Album
+                           </Button>
+                        </form>
 
+                        {/* Album Management Section */}
                         <div className="space-y-4">
                           <h3 className="text-sm font-bold uppercase tracking-widest text-slate-500">Manage Albums</h3>
                           <div className="grid gap-3">
-                            {accessibleAlbums.map((album) => (
+                            {albums.map((album) => (
                               <div 
                                 key={album.id} 
                                 className={cn(
@@ -873,18 +959,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   >
                                     {album.isEnabled ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
                                   </Button>
-                                  {canDeleteAlbum && (
-                                    <Button 
-                                      variant="ghost" 
-                                      size="icon"
-                                      onClick={() => {
-                                        if(confirm("Delete this album and all its settings?")) onDeleteAlbum(album.id);
-                                      }}
-                                      className="h-10 w-10 rounded-xl text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
-                                    >
-                                      <Trash2 className="w-5 h-5" />
-                                    </Button>
-                                  )}
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon"
+                                    onClick={() => {
+                                      if(confirm("Delete this album and all its settings?")) onDeleteAlbum(album.id);
+                                    }}
+                                    className="h-10 w-10 rounded-xl text-rose-500 hover:text-rose-400 hover:bg-rose-500/10"
+                                  >
+                                    <Trash2 className="w-5 h-5" />
+                                  </Button>
                                 </div>
                               </div>
                             ))}
@@ -926,7 +1010,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <Label className="text-xs font-bold text-slate-500 uppercase">Album Title</Label>
                                     <Input 
                                       value={currentEditingAlbum?.title}
-                                      onChange={(e) => onUpdateAlbum(editingAlbumId!, { title: e.target.value })}
+                                      onChange={(e) => onUpdateAlbum(editingAlbumId, { title: e.target.value })}
                                       className="bg-white/5 border-white/10 text-white font-bold"
                                     />
                                  </div>
@@ -935,7 +1019,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                       <Label className="text-xs font-bold text-slate-500 uppercase">Privacy</Label>
                                       <Select 
                                         value={currentEditingAlbum?.privacy} 
-                                        onValueChange={(val: 'public' | 'private') => onUpdateAlbum(editingAlbumId!, { privacy: val })}
+                                        onValueChange={(val: 'public' | 'private') => onUpdateAlbum(editingAlbumId, { privacy: val })}
                                       >
                                         <SelectTrigger className="bg-white/5 border-white/10 text-white">
                                           <SelectValue />
@@ -949,7 +1033,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <div className="flex items-center gap-3 pt-6">
                                        <Switch 
                                          checked={currentEditingAlbum?.isEnabled}
-                                         onCheckedChange={(checked) => onUpdateAlbum(editingAlbumId!, { isEnabled: checked })}
+                                         onCheckedChange={(checked) => onUpdateAlbum(editingAlbumId, { isEnabled: checked })}
                                        />
                                        <span className="text-xs font-bold text-white">Enabled</span>
                                     </div>
@@ -961,7 +1045,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               <Label className="text-xs font-bold text-slate-500 uppercase">Description</Label>
                               <Textarea 
                                 value={currentEditingAlbum?.description}
-                                onChange={(e) => onUpdateAlbum(editingAlbumId!, { description: e.target.value })}
+                                onChange={(e) => onUpdateAlbum(editingAlbumId, { description: e.target.value })}
                                 className="bg-white/5 border-white/10 text-white min-h-[80px]"
                                 placeholder="Describe this collection..."
                               />
@@ -1081,18 +1165,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 >
                                   {comic.enabled ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
                                 </Button>
-                                {canDeleteEpisode && (
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon"
-                                    onClick={() => {
-                                      if(confirm("Are you sure?")) onDeleteComic(comic.id);
-                                    }}
-                                    className="h-10 w-10 rounded-xl text-rose-500"
-                                  >
-                                    <Trash2 className="w-5 h-5" />
-                                  </Button>
-                                )}
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  onClick={() => {
+                                    if(confirm("Are you sure?")) onDeleteComic(comic.id);
+                                  }}
+                                  className="h-10 w-10 rounded-xl text-rose-500"
+                                >
+                                  <Trash2 className="w-5 h-5" />
+                                </Button>
                               </>
                             )}
                           </div>
@@ -1104,51 +1186,294 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                 <TabsContent value="users" className="mt-0">
                   <div className="space-y-6">
-                    <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                      <div className="flex items-center justify-between mb-6">
-                         <div className="flex items-center gap-2 text-amber-500">
-                           <Users className="w-5 h-5" />
-                           <h3 className="text-sm font-bold uppercase tracking-widest">User Permissions</h3>
-                         </div>
-                         <Button variant="ghost" size="sm" onClick={fetchAllUserRoles} className="text-xs text-slate-500">
-                           <RefreshCw className={cn("w-3 h-3 mr-2", isLoadingRoles && "animate-spin")} />
-                           Refresh
-                         </Button>
-                      </div>
+                    <div className="flex items-center justify-between">
+                       <div className="flex items-center gap-2 text-amber-500">
+                         <Users className="w-5 h-5" />
+                         <h3 className="text-sm font-bold uppercase tracking-widest">User Management</h3>
+                       </div>
+                       <div className="flex gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={fetchAllUsers} 
+                            className="text-xs text-slate-500"
+                          >
+                            <RefreshCw className={cn("w-3 h-3 mr-2", isLoadingUsers && "animate-spin")} />
+                            Refresh
+                          </Button>
+                          <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
+                            <DialogTrigger asChild>
+                              <Button className="h-9 bg-amber-500 text-black hover:bg-amber-400 font-bold text-xs rounded-xl">
+                                <UserPlus className="w-4 h-4 mr-2" />
+                                Add User
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="bg-[#121214] border-white/5 text-white">
+                              <DialogHeader>
+                                <DialogTitle>Add New User</DialogTitle>
+                              </DialogHeader>
+                              <form onSubmit={handleAddUser} className="space-y-4 pt-4">
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-slate-500 uppercase">Email Address</Label>
+                                  <Input 
+                                    type="email"
+                                    placeholder="user@example.com"
+                                    value={newUserEmail}
+                                    onChange={(e) => setNewUserEmail(e.target.value)}
+                                    className="bg-white/5 border-white/10"
+                                    required
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-slate-500 uppercase">Full Name</Label>
+                                  <Input 
+                                    placeholder="John Doe"
+                                    value={newUserName}
+                                    onChange={(e) => setNewUserName(e.target.value)}
+                                    className="bg-white/5 border-white/10"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-slate-500 uppercase">Role</Label>
+                                  <Select 
+                                    value={newUserRole} 
+                                    onValueChange={(val: AppRole) => setNewUserRole(val)}
+                                  >
+                                    <SelectTrigger className="bg-white/5 border-white/10">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-[#121214] border-white/10 text-white">
+                                      <SelectItem value="admin">Admin</SelectItem>
+                                      <SelectItem value="editor">Editor</SelectItem>
+                                      <SelectItem value="viewer">Viewer</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                
+                                <div className="pt-4 border-t border-white/5 space-y-4">
+                                   <div className="flex items-center gap-2 text-amber-500">
+                                      <Key className="w-4 h-4" />
+                                      <span className="text-xs font-bold uppercase tracking-widest">Set Password</span>
+                                   </div>
+                                   
+                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      <div className="space-y-2">
+                                         <Label className="text-[10px] text-slate-500 uppercase">Password</Label>
+                                         <div className="relative">
+                                            <Input 
+                                              type={showAddUserPassword ? "text" : "password"}
+                                              placeholder="******"
+                                              value={addUserPassword}
+                                              onChange={(e) => setAddUserPassword(e.target.value)}
+                                              className="bg-white/5 border-white/10 h-10 pr-10"
+                                              required
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => setShowAddUserPassword(!showAddUserPassword)}
+                                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                                            >
+                                              {showAddUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                         </div>
+                                      </div>
+                                      <div className="space-y-2">
+                                         <Label className="text-[10px] text-slate-500 uppercase">Confirm Password</Label>
+                                         <Input 
+                                           type={showAddUserPassword ? "text" : "password"}
+                                           placeholder="******"
+                                           value={addUserConfirmPassword}
+                                           onChange={(e) => setAddUserConfirmPassword(e.target.value)}
+                                           className="bg-white/5 border-white/10 h-10"
+                                           required
+                                         />
+                                      </div>
+                                   </div>
+                                </div>
 
-                      <div className="space-y-3">
-                        {allUserRoles.map(u => (
-                          <div key={u.id} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
-                            <div className="flex items-center gap-3">
-                               <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 font-bold">
-                                 {u.email?.[0].toUpperCase()}
+                                <DialogFooter className="pt-4">
+                                  <Button type="submit" className="w-full bg-amber-500 text-black hover:bg-amber-400 font-bold">
+                                    Create User
+                                  </Button>
+                                </DialogFooter>
+                              </form>
+                            </DialogContent>
+                          </Dialog>
+                       </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {allUsers.map(u => (
+                        <div 
+                          key={u.id} 
+                          className={cn(
+                            "flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10",
+                            !u.isEnabled && "opacity-60 grayscale"
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                             <Avatar className="w-10 h-10 border border-white/10">
+                                <AvatarImage src={u.avatarUrl} />
+                                <AvatarFallback className="bg-slate-800 text-slate-400 font-bold">
+                                   {u.name?.[0]?.toUpperCase() || u.email[0].toUpperCase()}
+                                </AvatarFallback>
+                             </Avatar>
+                             <div>
+                               <div className="flex items-center gap-2">
+                                  <p className="text-sm font-bold text-white">{u.name || "Unnamed User"}</p>
+                                  {!u.isEnabled && (
+                                     <span className="text-[8px] bg-rose-500/20 text-rose-500 px-1.5 py-0.5 rounded font-bold uppercase">
+                                        Disabled
+                                     </span>
+                                  )}
                                </div>
-                               <div>
-                                 <p className="text-sm font-bold text-white">{u.email}</p>
-                                 <p className="text-[10px] text-slate-500 uppercase">UID: {u.userId.slice(0, 8)}...</p>
-                               </div>
+                               <p className="text-xs text-slate-400">{u.email}</p>
+                             </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                               <Label className="text-[10px] text-slate-500 uppercase">Role</Label>
+                               <Select 
+                                 value={u.role} 
+                                 onValueChange={(val: AppRole) => handleUpdateRole(u.id, val)}
+                               >
+                                 <SelectTrigger className="w-28 h-9 bg-white/5 border-white/10 text-white text-xs">
+                                   <SelectValue />
+                                 </SelectTrigger>
+                                 <SelectContent className="bg-[#121214] border-white/10 text-white">
+                                   <SelectItem value="admin">Admin</SelectItem>
+                                   <SelectItem value="editor">Editor</SelectItem>
+                                   <SelectItem value="viewer">Viewer</SelectItem>
+                                 </SelectContent>
+                               </Select>
                             </div>
-                            
+
+                            <div className="flex items-center gap-3 border-l border-white/10 pl-4">
+                               <div className="flex items-center gap-2">
+                                  <Switch 
+                                    checked={u.isEnabled}
+                                    onCheckedChange={() => handleToggleUserEnabled(u.id, u.isEnabled)}
+                                  />
+                               </div>
+                               <Button 
+                                 variant="ghost" 
+                                 size="icon" 
+                                 onClick={() => openEditModal(u)}
+                                 className="h-9 w-9 text-slate-500 hover:text-white"
+                               >
+                                 <Edit className="w-4 h-4" />
+                               </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {allUsers.length === 0 && !isLoadingUsers && (
+                         <div className="text-center py-10 text-slate-500">
+                            No users found.
+                         </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Edit User Modal */}
+                  <Dialog open={isEditUserOpen} onOpenChange={setIsEditUserOpen}>
+                    <DialogContent className="bg-[#121214] border-white/5 text-white">
+                      <DialogHeader>
+                        <DialogTitle>Edit User Profile</DialogTitle>
+                      </DialogHeader>
+                      {editingUser && (
+                        <form onSubmit={handleUpdateUser} className="space-y-4 pt-4">
+                          <div className="space-y-2 opacity-50">
+                            <Label className="text-xs text-slate-500 uppercase">Email (Cannot change)</Label>
+                            <Input 
+                              value={editingUser.email}
+                              disabled
+                              className="bg-white/5 border-white/10"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs text-slate-500 uppercase">Full Name</Label>
+                            <Input 
+                              placeholder="John Doe"
+                              value={newUserName}
+                              onChange={(e) => setNewUserName(e.target.value)}
+                              className="bg-white/5 border-white/10"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs text-slate-500 uppercase">Role</Label>
                             <Select 
-                              value={u.role} 
-                              onValueChange={(val: AppRole) => handleUpdateRole(u.userId, val)}
+                              value={newUserRole} 
+                              onValueChange={(val: AppRole) => setNewUserRole(val)}
                             >
-                              <SelectTrigger className="w-32 h-10 bg-white/5 border-white/10 text-white text-xs">
+                              <SelectTrigger className="bg-white/5 border-white/10">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="bg-[#121214] border-white/10 text-white">
-                                <SelectItem value="superadmin">Superadmin</SelectItem>
-                                <SelectItem value="role3">Role 3</SelectItem>
-                                <SelectItem value="role2">Role 2</SelectItem>
-                                <SelectItem value="role1">Role 1</SelectItem>
+                                <SelectItem value="admin">Admin</SelectItem>
+                                <SelectItem value="editor">Editor</SelectItem>
                                 <SelectItem value="viewer">Viewer</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                          
+                          <div className="pt-4 border-t border-white/5 space-y-4">
+                             <div className="flex items-center gap-2 text-amber-500">
+                                <Key className="w-4 h-4" />
+                                <span className="text-xs font-bold uppercase tracking-widest">Change Password</span>
+                             </div>
+                             
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                   <Label className="text-[10px] text-slate-500 uppercase">New Password</Label>
+                                   <div className="relative">
+                                      <Input 
+                                        type={showUserPassword ? "text" : "password"}
+                                        placeholder="******"
+                                        value={newUserPassword}
+                                        onChange={(e) => setNewUserPassword(e.target.value)}
+                                        className="bg-white/5 border-white/10 h-10 pr-10"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowUserPassword(!showUserPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                                      >
+                                        {showUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                      </button>
+                                   </div>
+                                </div>
+                                <div className="space-y-2">
+                                   <Label className="text-[10px] text-slate-500 uppercase">Confirm Password</Label>
+                                   <Input 
+                                     type={showUserPassword ? "text" : "password"}
+                                     placeholder="******"
+                                     value={confirmUserPassword}
+                                     onChange={(e) => setConfirmUserPassword(e.target.value)}
+                                     className="bg-white/5 border-white/10 h-10"
+                                   />
+                                </div>
+                             </div>
+                             <p className="text-[10px] text-slate-500">Leave blank to keep current password.</p>
+                          </div>
+
+                          <DialogFooter className="pt-4">
+                            <Button 
+                              type="submit" 
+                              className="w-full bg-amber-500 text-black hover:bg-amber-400 font-bold"
+                              disabled={isUpdatingPassword}
+                            >
+                              {isUpdatingPassword ? (
+                                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                              ) : null}
+                              Save Changes
+                            </Button>
+                          </DialogFooter>
+                        </form>
+                      )}
+                    </DialogContent>
+                  </Dialog>
                 </TabsContent>
               </Tabs>
             </div>

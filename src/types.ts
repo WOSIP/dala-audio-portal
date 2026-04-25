@@ -3,6 +3,11 @@ export interface InvitedAccess {
   enabled: boolean;
 }
 
+export interface Author {
+  name: string;
+  avatarUrl?: string;
+}
+
 export interface Album {
   id: string;
   title: string;
@@ -12,7 +17,7 @@ export interface Album {
   privacy: 'public' | 'private';
   invitedAccess: InvitedAccess[];
   isEnabled: boolean;
-  owner_id?: string;
+  author?: Author;
 }
 
 export interface Comic {
@@ -41,7 +46,7 @@ export type IllustrationPartImport = {
   message: string;
 };
 
-export type AppRole = 'superadmin' | 'role3' | 'role2' | 'role1' | 'viewer';
+export type AppRole = 'admin' | 'editor' | 'viewer' | 'superadmin' | 'moderator' | 'user' | 'role1' | 'role2' | 'role3';
 
 export interface UserRole {
   id: string;
@@ -52,7 +57,15 @@ export interface UserRole {
 
 export interface UserProfile {
   id: string;
-  email?: string;
+  email: string;
   name?: string;
   avatarUrl?: string;
+  isEnabled: boolean;
+  createdAt: string;
+  password_hash?: string;
+}
+
+export interface UserManagementRecord extends UserProfile {
+  role: AppRole;
+  userId: string;
 }

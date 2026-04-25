@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Comic } from "../types";
+import { Comic, Author } from "../types";
 import { 
   Play, 
   Pause, 
@@ -17,17 +17,20 @@ import { Slider } from "./ui/slider";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { motion, AnimatePresence } from "framer-motion";
+import { BuilderBadge } from "./BuilderBadge";
 
 interface AudioPlayerProps {
   currentComic: Comic;
   onNextComic: () => void;
   onPreviousComic: () => void;
+  author?: Author;
 }
 
 export const AudioPlayer: React.FC<AudioPlayerProps> = ({ 
   currentComic, 
   onNextComic,
-  onPreviousComic
+  onPreviousComic,
+  author
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -239,13 +242,22 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
         {/* Audio Controls Area */}
         <div className="w-full flex flex-col">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-8">
             <div className="flex-1">
-              <h1 className="text-3xl md:text-5xl font-black mb-3 tracking-tighter text-white">{currentComic.title}</h1>
+              <div className="flex flex-wrap items-center gap-3 mb-3">
+                <h1 className="text-3xl md:text-5xl font-black tracking-tighter text-white">{currentComic.title}</h1>
+                {author && (
+                  <BuilderBadge 
+                    name={author.name} 
+                    avatarUrl={author.avatarUrl} 
+                    className="mt-1"
+                  />
+                )}
+              </div>
               <p className="text-slate-400 text-base md:text-lg line-clamp-2 max-w-2xl">{currentComic.notes || "A Dala original audio comic experience."}</p>
             </div>
 
-            <div className="flex items-center gap-3 w-full md:w-44 bg-white/5 border border-white/10 p-2 px-4 rounded-full">
+            <div className="flex items-center gap-3 w-full md:w-44 bg-white/5 border border-white/10 p-2 px-4 rounded-full self-end md:self-auto">
               <Button 
                 variant="ghost" 
                 size="icon" 
