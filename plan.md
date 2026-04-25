@@ -1,24 +1,38 @@
-# Implementation Plan - Builder Badge Integration
+# UI/UX Enhancement Plan: Premium Album & Sidebar Experience
 
-Integrate a stylish \"Builder Badge\" on the home page to signify the author of the content.
+## Goal
+Elevate the visual presentation of the album collection and improve the sidebar's UX, focusing on a premium "audio-first" feel and better mobile responsiveness.
 
-## 1. Data Model Enhancement
-- Update `Album` interface in `src/types.ts` to include `authorName` and `authorAvatarUrl`.
+## 1. Visual Overhaul of Album Selection
+- **Premium Album Cards**:
+    - Enhance the 3D stack effect with deeper shadows and dynamic rotations using Framer Motion.
+    - Implement a "Glass-Gold" theme for the active album, using gradients and blur effects.
+    - Add a "Live" waveform indicator that feels more integrated into the cover art.
+    - Improve typography with tighter tracking and bold weights for a "high-end" look.
+- **Improved Horizontal Scroll**:
+    - Add custom "Next/Prev" arrow buttons (visible on hover) for desktop.
+    - Ensure perfect snap-points for mobile swiping.
+    - Add a subtle background glow that changes color/intensity based on the active album.
 
-## 2. Data Fetching Update
-- Modify the `fetchData` logic in `src/App.tsx` to join the `albums` table with the `profiles` table via `owner_id`.
-- Map the joined profile data to the `Album` objects.
+## 2. Sidebar Navigation & Hierarchy
+- **Section Headers**: Use more distinct visual separators with micro-animations.
+- **Episode List**:
+    - Implement a cleaner list design with better contrast for "Now Playing".
+    - Add a "Playing" animation to the active episode's thumbnail.
+    - Improve touch targets for mobile users.
 
-## 3. UI Component Creation
-- Create `src/components/BuilderBadge.tsx` using Tailwind CSS and Lucide icons.
-- Design the badge to be elegant, consistent with the existing dark theme and amber accents.
-- Include the author's name and optionally their avatar.
+## 3. Mobile UX Optimization
+- **Responsive Layout**: 
+    - Adjust the sidebar width and padding for smaller screens.
+    - Ensure the "Access Control" (email unlock) is sleek and doesn't take up too much vertical space.
+    - Fix the "comic list under audio buttons" issue by ensuring the sidebar has its own scroll context or using a more compact layout on mobile.
 
-## 4. Integration
-- Update `src/components/AudioPlayer.tsx` to accept `authorName` and `authorAvatarUrl` as props (or pass them via the comic/album relation).
-- Render the `BuilderBadge` within the `AudioPlayer` or near the comic title to clearly attribute the content.
-- Ensure the layout remains responsive and visually balanced.
+## 4. Technical Refinement
+- **Framer Motion**: Use `layout` props for smooth transitions between albums and lists.
+- **Tailwind CSS**: Use `backdrop-blur`, `shadow-2xl`, and `ring` utilities for depth.
+- **Accessibility**: Ensure ARIA labels and keyboard navigation are maintained.
 
-## 5. Verification
-- Validate the build and ensure the badge appears correctly on the home page for existing content.
-- Ensure the design matches the \"Dala Portal\" aesthetic (dark background, amber/slate accents).
+## 5. Preservation
+- No changes to Supabase logic or core data handling.
+- Preserve existing "Admin Panel" and "Audio Player" functionality.
+- Maintain the established Amber/Dark color palette.

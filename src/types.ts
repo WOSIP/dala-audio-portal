@@ -33,6 +33,7 @@ export interface Comic {
   audioImportLink?: string;
   illustrationImportLink?: string;
   albumId: string;
+  displayOrder: number;
 }
 
 export type AudioTrackImport = {

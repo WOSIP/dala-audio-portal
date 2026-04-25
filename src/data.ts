@@ -40,7 +40,8 @@ export const initialComics: Comic[] = [
     deleted: false,
     audioImportLink: "https://dala-audio-bundle-import.com/dala-legend-audio",
     illustrationImportLink: "https://dala-audio-bundle-import.com/dala-legend-art",
-    albumId: "album-1"
+    albumId: "album-1",
+    displayOrder: 1
   },
   {
     id: "2",
@@ -57,7 +58,8 @@ export const initialComics: Comic[] = [
     deleted: false,
     audioImportLink: "https://dala-audio-bundle-import.com/echoes-audio",
     illustrationImportLink: "https://dala-audio-bundle-import.com/echoes-art",
-    albumId: "album-1"
+    albumId: "album-1",
+    displayOrder: 2
   },
   {
     id: "3",
@@ -74,6 +76,7 @@ export const initialComics: Comic[] = [
     deleted: false,
     audioImportLink: "https://dala-audio-bundle-import.com/warrior-audio",
     illustrationImportLink: "https://dala-audio-bundle-import.com/warrior-art",
-    albumId: "album-2"
+    albumId: "album-2",
+    displayOrder: 1
   }
 ];

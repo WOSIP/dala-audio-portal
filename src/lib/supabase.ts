@@ -6,11 +6,29 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /**
+ * File Upload Helper
+ */
+export const uploadFile = async (bucket: string, path: string, file: File) => {
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .upload(path, file, {
+      upsert: true
+    });
+  
+  if (error) throw error;
+  
+  const { data: { publicUrl } } = supabase.storage
+    .from(bucket)
+    .getPublicUrl(data.path);
+    
+  return publicUrl;
+};
+
+/**
  * User Management Functions
  */
 
 export const createUserByEmail = async (email: string, name: string, role: string, password?: string) => {
-  // Use a temporary client to avoid signing out the current admin/user
   const tempClient = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: false,
@@ -19,8 +37,6 @@ export const createUserByEmail = async (email: string, name: string, role: strin
     }
   });
 
-  // Create the auth user. The database trigger handle_new_user 
-  // will automatically create the profile and user_roles records.
   const { data, error: signUpError } = await tempClient.auth.signUp({
     email,
     password: password || 'temp-pass-' + Math.random().toString(36).slice(-8),
@@ -35,8 +51,6 @@ export const createUserByEmail = async (email: string, name: string, role: strin
   if (signUpError) throw signUpError;
   if (!data.user) throw new Error("Failed to create user record");
 
-  // For consistency with updateUserPassword, we also store the password in the profiles table 
-  // if the password_hash column exists.
   if (password) {
     try {
       await supabase
@@ -44,11 +58,10 @@ export const createUserByEmail = async (email: string, name: string, role: strin
         .update({ password_hash: password })
         .eq('id', data.user.id);
     } catch (e) {
-      console.warn("Could not update password_hash in profiles (this is expected if RLS is tight and admin is not auth'd):", e);
+      console.warn("Could not update password_hash in profiles:", e);
     }
   }
 
-  // Fetch the profile created by the trigger to return it
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('*')
@@ -56,7 +69,6 @@ export const createUserByEmail = async (email: string, name: string, role: strin
     .single();
 
   if (profileError) {
-    // If profile fetch fails (e.g. RLS), we return a synthetic profile based on the auth user
     return {
       id: data.user.id,
       email: data.user.email,
@@ -68,9 +80,6 @@ export const createUserByEmail = async (email: string, name: string, role: strin
   return profile;
 };
 
-/**
- * Updates a user's enabled/disabled status.
- */
 export const updateUserStatus = async (userId: string, isEnabled: boolean) => {
   const { error } = await supabase
     .from('profiles')
@@ -80,7 +89,6 @@ export const updateUserStatus = async (userId: string, isEnabled: boolean) => {
   if (error) throw error;
 };
 
-// Alias for backward compatibility if needed, though we will update AdminPanel
 export const toggleUserStatus = updateUserStatus;
 
 export const updateUserProfile = async (userId: string, updates: { name?: string, role?: string }) => {
@@ -101,15 +109,87 @@ export const updateUserProfile = async (userId: string, updates: { name?: string
   }
 };
 
-/**
- * Updates a user's password in the database.
- */
 export const updateUserPassword = async (userId: string, password: string) => {
-  // Update the profiles table password_hash field
   const { error } = await supabase
     .from('profiles')
     .update({ password_hash: password })
     .eq('id', userId);
 
+  if (error) throw error;
+};
+
+/**
+ * Album Management Functions
+ */
+
+export const updateAlbum = async (id: string, updates: any) => {
+  const dbUpdates: any = {};
+  if (updates.title !== undefined) dbUpdates.title = updates.title;
+  if (updates.description !== undefined) dbUpdates.description = updates.description;
+  if (updates.coverUrl !== undefined) dbUpdates.cover_url = updates.coverUrl;
+  if (updates.privacy !== undefined) dbUpdates.privacy = updates.privacy;
+  if (updates.isEnabled !== undefined) dbUpdates.is_enabled = updates.isEnabled;
+
+  if (Object.keys(dbUpdates).length > 0) {
+    const { error } = await supabase
+      .from('albums')
+      .update(dbUpdates)
+      .eq('id', id);
+    if (error) throw error;
+  }
+
+  if (updates.invitedAccess !== undefined) {
+    await supabase.from('album_invitations').delete().eq('album_id', id);
+    if (updates.invitedAccess.length > 0) {
+      const { error: invError } = await supabase
+        .from('album_invitations')
+        .insert(updates.invitedAccess.map((i: any) => ({
+          album_id: id,
+          email: i.email,
+          enabled: i.enabled
+        })));
+      if (invError) throw invError;
+    }
+  }
+};
+
+export const deleteAlbum = async (id: string) => {
+  const { error } = await supabase
+    .from('albums')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+};
+
+/**
+ * Comic Management Functions
+ */
+
+export const updateComic = async (id: string, updates: any) => {
+  const dbUpdates: any = {};
+  if (updates.title !== undefined) dbUpdates.title = updates.title;
+  if (updates.audioUrl !== undefined) dbUpdates.audio_url = updates.audioUrl;
+  if (updates.coverUrl !== undefined) dbUpdates.cover_url = updates.coverUrl;
+  if (updates.illustrationUrls !== undefined) dbUpdates.illustration_urls = updates.illustrationUrls;
+  if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+  if (updates.albumId !== undefined) dbUpdates.album_id = updates.albumId;
+  if (updates.enabled !== undefined) dbUpdates.enabled = updates.enabled;
+  if (updates.deleted !== undefined) dbUpdates.deleted = updates.deleted;
+
+  // Update comic metadata
+  if (Object.keys(dbUpdates).length > 0) {
+    const { error } = await supabase
+      .from('comics')
+      .update(dbUpdates)
+      .eq('id', id);
+    if (error) throw error;
+  }
+};
+
+export const deleteComic = async (id: string) => {
+  const { error } = await supabase
+    .from('comics')
+    .update({ deleted: true })
+    .eq('id', id);
   if (error) throw error;
 };

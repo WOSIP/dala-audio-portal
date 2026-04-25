@@ -4,15 +4,15 @@ import { Comic, Album } from "../types";
 import { Headphones } from "lucide-react";
 
 interface NavbarProps {
-  onAddComic: (comic: Omit<Comic, "id" | "createdAt" | "enabled" | "deleted">) => void;
+  onAddComic: (comic: Omit<Comic, "id" | "createdAt" | "enabled" | "deleted">) => Promise<void>;
   comics: Comic[];
   albums: Album[];
   onToggleEnable: (id: string) => void;
   onDeleteComic: (id: string) => void;
-  onUpdateComic: (id: string, updates: Partial<Comic>) => void;
+  onUpdateComic: (id: string, updates: Partial<Comic>) => Promise<void>;
   onReorderComic: (id: string, direction: 'up' | 'down') => void;
-  onAddAlbum: (album: Omit<Album, "id" | "createdAt" | "isEnabled">) => void;
-  onUpdateAlbum: (id: string, updates: Partial<Album>) => void;
+  onAddAlbum: (album: Omit<Album, "id" | "createdAt" | "isEnabled">) => Promise<void>;
+  onUpdateAlbum: (id: string, updates: Partial<Album>) => Promise<void>;
   onDeleteAlbum: (id: string) => void;
   onToggleAlbumEnable: (id: string) => void;
 }
@@ -38,8 +38,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Headphones className="w-7 h-7" />
           </div>
           <div className="flex flex-col">
-            <h1 className="text-3xl font-black tracking-tighter leading-none text-white">DALA</h1>
-            <p className="text-[10px] font-black text-amber-500 tracking-[0.4em] uppercase">Audio Portal</p>
+            <h1 className="text-xl font-black tracking-tighter leading-none text-white uppercase">World Open Services</h1>
+            <p className="text-[10px] font-black text-amber-500 tracking-[0.2em] uppercase">Dala Audio Portal</p>
           </div>
         </div>
         

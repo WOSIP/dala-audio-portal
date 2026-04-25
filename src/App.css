@@ -110,3 +110,35 @@ label {
 .dialog-content {
   color: #FFFFFF !important;
 }
+
+/* PREMIUM VISUAL EFFECTS */
+
+@keyframes shimmer {
+  0% { transform: translateX(-150%); }
+  50% { transform: translateX(100%); }
+  100% { transform: translateX(150%); }
+}
+
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
