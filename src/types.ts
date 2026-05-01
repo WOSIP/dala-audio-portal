@@ -24,6 +24,7 @@ export interface Comic {
   id: string;
   title: string;
   audioUrl: string;
+  soundtrackUrl?: string;
   coverUrl: string;
   illustrationUrls: string[];
   notes?: string;
@@ -33,7 +34,6 @@ export interface Comic {
   audioImportLink?: string;
   illustrationImportLink?: string;
   albumId: string;
-  displayOrder: number;
 }
 
 export type AudioTrackImport = {

@@ -21,6 +21,7 @@ import {
   Upload,
   ImagePlus,
   Music,
+  Music2,
   FileText,
   Loader2,
   Layers,
@@ -64,15 +65,15 @@ import { extractPagesFromPDF } from "../utils/pdf-handler";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface AdminPanelProps {
-  onAddComic: (comic: Omit<Comic, "id" | "createdAt" | "enabled" | "deleted" | "displayOrder">) => Promise<void>;
+  onAddComic: (comic: Omit<Comic, "id" | "createdAt" | "enabled" | "deleted">) => void;
   comics: Comic[];
   albums: Album[];
   onToggleEnable: (id: string) => void;
   onDeleteComic: (id: string) => void;
-  onUpdateComic: (id: string, updates: Partial<Comic>) => Promise<void>;
+  onUpdateComic: (id: string, updates: Partial<Comic>) => void;
   onReorderComic: (id: string, direction: 'up' | 'down') => void;
-  onAddAlbum: (album: Omit<Album, "id" | "createdAt" | "isEnabled">) => Promise<void>;
-  onUpdateAlbum: (id: string, updates: Partial<Album>) => Promise<void>;
+  onAddAlbum: (album: Omit<Album, "id" | "createdAt" | "isEnabled">) => void;
+  onUpdateAlbum: (id: string, updates: Partial<Album>) => void;
   onDeleteAlbum: (id: string) => void;
   onToggleAlbumEnable: (id: string) => void;
 }
@@ -105,11 +106,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const coverInputRef = useRef<HTMLInputElement>(null);
   const illustrationsInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
+  const soundtrackInputRef = useRef<HTMLInputElement>(null);
   const albumCoverInputRef = useRef<HTMLInputElement>(null);
   const editAlbumCoverInputRef = useRef<HTMLInputElement>(null);
   const editComicCoverInputRef = useRef<HTMLInputElement>(null);
-  const editComicAudioInputRef = useRef<HTMLInputElement>(null);
-  const editComicIllustrationsInputRef = useRef<HTMLInputElement>(null);
+  const editComicSoundtrackInputRef = useRef<HTMLInputElement>(null);
 
   // User Management State
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -133,12 +134,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isEditComicOpen, setIsEditComicOpen] = useState(false);
   const [editComicForm, setEditComicForm] = useState<Partial<Comic>>({});
   const [isUploadingEditCover, setIsUploadingEditCover] = useState(false);
-  const [isUploadingEditAudio, setIsUploadingEditAudio] = useState(false);
-  const [isProcessingEditIllustration, setIsProcessingEditIllustration] = useState(false);
+  const [isUploadingEditSoundtrack, setIsUploadingEditSoundtrack] = useState(false);
 
   const [formData, setFormData] = useState<{
     title: string;
     audioUrl: string;
+    soundtrackUrl: string;
     coverUrl: string;
     illustrationUrls: string[];
     notes: string;
@@ -148,6 +149,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   }>({
     title: "",
     audioUrl: "",
+    soundtrackUrl: "",
     coverUrl: "",
     illustrationUrls: [],
     notes: "",
@@ -347,23 +349,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       albumId: comic.albumId,
       enabled: comic.enabled,
       coverUrl: comic.coverUrl,
-      audioUrl: comic.audioUrl,
-      illustrationUrls: comic.illustrationUrls || []
+      soundtrackUrl: comic.soundtrackUrl,
+      audioUrl: comic.audioUrl
     });
     setIsEditComicOpen(true);
   };
 
-  const handleUpdateComicSubmit = async (e: React.FormEvent) => {
+  const handleUpdateComicSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingComicId) return;
-    try {
-      await onUpdateComic(editingComicId, editComicForm);
-      toast.success("Episode updated successfully");
-      setIsEditComicOpen(false);
-      setEditingComicId(null);
-    } catch (error: any) {
-      toast.error(`Update failed: ${error.message}`);
-    }
+    onUpdateComic(editingComicId, editComicForm);
+    toast.success("Episode updated successfully");
+    setIsEditComicOpen(false);
+    setEditingComicId(null);
   };
 
   useEffect(() => {
@@ -408,45 +406,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }, 1000);
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'cover' | 'illustrations' | 'audio' | 'album-cover' | 'edit-album-cover' | 'edit-comic-cover' | 'edit-comic-audio' | 'edit-comic-illustrations') => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'cover' | 'illustrations' | 'audio' | 'soundtrack' | 'album-cover' | 'edit-album-cover' | 'edit-comic-cover' | 'edit-comic-soundtrack' | 'edit-comic-audio') => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     const file = files[0];
-    const fileName = `${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+    const fileName = `${Date.now()}_${file.name.replace(/\\s+/g, '_')}`;
 
     try {
       if (type === 'edit-comic-cover') {
         setIsUploadingEditCover(true);
         const publicUrl = await uploadFile('comics', `covers/${fileName}`, file);
         setEditComicForm(prev => ({ ...prev, coverUrl: publicUrl }));
-        if (editingComicId) {
-          await onUpdateComic(editingComicId, { coverUrl: publicUrl });
-          toast.success("Cover image updated and saved!");
-        }
+        toast.success("Cover image uploaded!");
+      } else if (type === 'edit-comic-soundtrack') {
+        setIsUploadingEditSoundtrack(true);
+        const publicUrl = await uploadFile('comic_soundtracks', `soundtracks/${fileName}`, file);
+        setEditComicForm(prev => ({ ...prev, soundtrackUrl: publicUrl }));
+        toast.success("Soundtrack updated!");
       } else if (type === 'edit-comic-audio') {
-        setIsUploadingEditAudio(true);
         const publicUrl = await uploadFile('comics', `audio/${fileName}`, file);
         setEditComicForm(prev => ({ ...prev, audioUrl: publicUrl }));
-        if (editingComicId) {
-          await onUpdateComic(editingComicId, { audioUrl: publicUrl });
-          toast.success("Main audio track updated and saved!");
-        }
-      } else if (type === 'edit-comic-illustrations') {
-        if (file.type !== 'application/pdf') {
-          toast.error("Please upload a PDF file for illustrations.");
-          return;
-        }
-        setIsProcessingEditIllustration(true);
-        try {
-          const pageUrls = await extractPagesFromPDF(file);
-          setEditComicForm(prev => ({ ...prev, illustrationUrls: pageUrls }));
-          toast.success(`Extracted ${pageUrls.length} page(s) from PDF!`);
-        } catch (error) {
-          toast.error("Failed to process PDF file.");
-        } finally {
-          setIsProcessingEditIllustration(false);
-        }
+        toast.success("Main audio track updated!");
       } else if (type === 'cover') {
         const publicUrl = await uploadFile('comics', `covers/${fileName}`, file);
         setFormData(prev => ({ ...prev, coverUrl: publicUrl }));
@@ -458,7 +439,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       } else if (type === 'edit-album-cover') {
         if (editingAlbumId) {
           const publicUrl = await uploadFile('comics', `albums/${fileName}`, file);
-          await onUpdateAlbum(editingAlbumId, { coverUrl: publicUrl });
+          onUpdateAlbum(editingAlbumId, { coverUrl: publicUrl });
           toast.success("Album cover updated!");
         }
       } else if (type === 'illustrations') {
@@ -480,49 +461,45 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         const publicUrl = await uploadFile('comics', `audio/${fileName}`, file);
         setFormData(prev => ({ ...prev, audioUrl: publicUrl }));
         toast.success("Audio track uploaded!");
+      } else if (type === 'soundtrack') {
+        const publicUrl = await uploadFile('comic_soundtracks', `soundtracks/${fileName}`, file);
+        setFormData(prev => ({ ...prev, soundtrackUrl: publicUrl }));
+        toast.success("Soundtrack uploaded!");
       }
     } catch (error: any) {
       toast.error(`Upload failed: ${error.message}`);
     } finally {
       setIsUploadingEditCover(false);
-      setIsUploadingEditAudio(false);
+      setIsUploadingEditSoundtrack(false);
       e.target.value = "";
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.audioUrl || !formData.albumId) {
       toast.error("Title, Audio, and Album are required.");
       return;
     }
-    try {
-      await onAddComic(formData);
-      toast.success("Comic published successfully!");
-      setFormData({ 
-        title: "", audioUrl: "", coverUrl: "", illustrationUrls: [], 
-        notes: "", audioImportLink: "", illustrationImportLink: "", albumId: albums[0]?.id || ""
-      });
-      setAudioMagicLink("");
-      setActiveTab("manage");
-    } catch (error: any) {
-      toast.error(`Publication failed: ${error.message}`);
-    }
+    onAddComic(formData);
+    toast.success("Comic published successfully!");
+    setFormData({ 
+      title: "", audioUrl: "", soundtrackUrl: "", coverUrl: "", illustrationUrls: [], 
+      notes: "", audioImportLink: "", illustrationImportLink: "", albumId: albums[0]?.id || ""
+    });
+    setAudioMagicLink("");
+    setActiveTab("manage");
   };
 
-  const handleAddAlbumSubmit = async (e: React.FormEvent) => {
+  const handleAddAlbumSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!albumFormData.title || !albumFormData.coverUrl) {
       toast.error("Album title and cover are required.");
       return;
     }
-    try {
-      await onAddAlbum(albumFormData);
-      toast.success("Album created successfully!");
-      setAlbumFormData({ title: "", description: "", coverUrl: "", privacy: 'public', invitedAccess: [] });
-    } catch (error: any) {
-      toast.error(`Album creation failed: ${error.message}`);
-    }
+    onAddAlbum(albumFormData);
+    toast.success("Album created successfully!");
+    setAlbumFormData({ title: "", description: "", coverUrl: "", privacy: 'public', invitedAccess: [] });
   };
 
   const handleAddInvitedEmail = () => {
@@ -687,6 +664,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </div>
 
                       <div className="space-y-2">
+                        <Label className="text-xs font-bold uppercase tracking-widest text-slate-500 flex justify-between">Soundtrack (Ambient Music) {formData.soundtrackUrl && <div className="flex items-center gap-2"><span className="text-violet-500 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Ready</span><Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setFormData({...formData, soundtrackUrl: ""}); }} className="h-6 w-6 text-rose-500"><X className="w-3 h-3" /></Button></div>}</Label>
+                        <div onClick={() => soundtrackInputRef.current?.click()} className={cn("relative h-32 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-all", formData.soundtrackUrl ? "border-violet-500/50 bg-violet-500/5" : "border-white/10 hover:border-violet-500/50 bg-white/5 hover:bg-white/10")}>
+                          {formData.soundtrackUrl ? (<div className="flex flex-col items-center"><Music2 className="w-8 h-8 text-violet-500 mb-1" /><span className="text-xs font-bold text-violet-500">Soundtrack Uploaded</span><span className="text-[10px] text-slate-500 mt-1 truncate max-w-[150px]">Click to replace</span></div>) : (<><Music2 className="w-8 h-8 text-slate-500" /><span className="text-xs font-medium text-slate-500">Upload Soundtrack (Optional)</span></>)}
+                          <input type="file" ref={soundtrackInputRef} className="hidden" accept="audio/*" onChange={(e) => handleFileUpload(e, 'soundtrack')} />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
                         <Label className="text-xs font-bold uppercase tracking-widest text-slate-500 flex justify-between">Illustration Pages (PDF) {formData.illustrationUrls.length > 0 && (<span className="text-sky-500 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> {formData.illustrationUrls.length} Pages</span>)}</Label>
                         <div onClick={() => !isProcessingIllustration && illustrationsInputRef.current?.click()} className={cn("relative min-h-[160px] rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-4 cursor-pointer transition-all p-6", formData.illustrationUrls.length > 0 ? "border-sky-500/50 bg-sky-500/5" : "border-white/10 hover:border-sky-500/50 bg-white/5 hover:bg-white/10", isProcessingIllustration && "opacity-50 cursor-wait")}>
                           {isProcessingIllustration ? (<div className="flex flex-col items-center gap-3"><Loader2 className="w-10 h-10 text-sky-500 animate-spin" /><div className="text-center"><p className="text-sm font-bold text-white">Processing PDF...</p><p className="text-xs text-slate-500">Extracting pages as illustrations</p></div></div>) : formData.illustrationUrls.length > 0 ? (<div className="w-full space-y-4"><div className="flex items-center justify-center gap-3"><FileText className="w-8 h-8 text-sky-500" /><div className="text-left"><p className="text-sm font-bold text-white">PDF Uploaded</p><p className="text-xs text-slate-500">Click to replace PDF</p></div></div><div className="grid grid-cols-4 sm:grid-cols-6 gap-2">{formData.illustrationUrls.slice(0, 12).map((url, index) => (<div key={index} className="relative aspect-[3/4] bg-white/10 rounded-lg overflow-hidden border border-white/10"><img src={url} className="w-full h-full object-cover" alt="" /><div className="absolute bottom-0.5 right-0.5 bg-black/60 text-[8px] px-1 rounded">{index + 1}</div></div>))}</div></div>) : (<><div className="w-12 h-12 rounded-2xl bg-sky-500/10 flex items-center justify-center text-sky-500"><FileText className="w-6 h-6" /></div><div className="text-center"><p className="text-sm font-bold text-white">Click to upload PDF</p><p className="text-xs text-slate-500">Each page will become a comic illustration</p></div></>)}
@@ -739,7 +724,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             {albums.map((album) => (
                               <div key={album.id} className={cn("flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/10", !album.isEnabled && "opacity-60 grayscale")}>
                                 <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-white/10"><img src={album.coverUrl} className="w-full h-full object-cover" alt="" /></div>
-                                <div className="flex-1 min-w-0"><h4 className="font-bold text-white truncate">{album.title}</h4><p className="text-[10px] text-slate-500 uppercase">{album.privacy} • {comics.filter(c => c.albumId === album.id && !c.deleted).length} Episodes</p></div>
+                                <div className="flex-1 min-w-0"><h4 className="font-bold text-white truncate">{album.title}</h4><p className="text-[10px] text-slate-500 uppercase">{album.privacy} \u2022 {comics.filter(c => c.albumId === album.id && !c.deleted).length} Episodes</p></div>
                                 <div className="flex items-center gap-2">
                                   <Button variant="ghost" size="icon" onClick={() => setEditingAlbumId(album.id)} className="h-10 w-10 rounded-xl text-amber-500 hover:bg-amber-500/10"><Edit className="w-5 h-5" /></Button>
                                   <Button variant="ghost" size="icon" onClick={() => onToggleAlbumEnable(album.id)} className={cn("h-10 w-10 rounded-xl", album.isEnabled ? "text-emerald-500" : "text-slate-500")}>{album.isEnabled ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}</Button>
@@ -825,24 +810,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <div className="flex items-center gap-1">
                             {canManageContent && (
                               <>
-                                <div className="flex flex-col gap-1 mr-2 border-r border-white/5 pr-2">
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    onClick={() => onReorderComic(comic.id, 'up')}
-                                    className="h-6 w-6 rounded-md text-slate-500 hover:text-white hover:bg-white/5"
-                                  >
-                                    <ArrowUp className="w-4 h-4" />
-                                  </Button>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    onClick={() => onReorderComic(comic.id, 'down')}
-                                    className="h-6 w-6 rounded-md text-slate-500 hover:text-white hover:bg-white/5"
-                                  >
-                                    <ArrowDown className="w-4 h-4" />
-                                  </Button>
-                                </div>
                                 <Button variant="ghost" size="icon" onClick={() => openEditComicModal(comic)} className="h-10 w-10 rounded-xl text-amber-500"><Edit className="w-5 h-5" /></Button>
                                 <Button variant="ghost" size="icon" onClick={() => onToggleEnable(comic.id)} className={cn("h-10 w-10 rounded-xl", comic.enabled ? "text-emerald-500" : "text-slate-500")}>{comic.enabled ? <CheckCircle2 className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}</Button>
                                 <Button variant="ghost" size="icon" onClick={() => { if(confirm("Are you sure?")) onDeleteComic(comic.id); }} className="h-10 w-10 rounded-xl text-rose-500"><Trash2 className="w-5 h-5" /></Button>
@@ -930,146 +897,107 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* Edit Comic Dialog */}
       <Dialog open={isEditComicOpen} onOpenChange={setIsEditComicOpen}>
-        <DialogContent className="bg-[#121214] border-white/5 text-white max-w-[600px]">
+        <DialogContent className="bg-[#121214] border-white/5 text-white max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Edit Episode</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleUpdateComicSubmit} className="space-y-4 pt-4 h-[75vh] overflow-y-auto pr-2 custom-scrollbar">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-4 border-b border-white/5">
-              <div className="space-y-2">
-                <Label className="text-xs text-slate-500 uppercase block">Episode Cover</Label>
-                <div 
-                  onClick={() => !isUploadingEditCover && editComicCoverInputRef.current?.click()} 
-                  className={cn(
-                    "relative h-40 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-all overflow-hidden",
-                    isUploadingEditCover ? "opacity-50 cursor-wait" : "hover:border-amber-500/50 hover:bg-white/5"
-                  )}
-                >
-                  {isUploadingEditCover ? (
-                    <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
-                  ) : editComicForm.coverUrl ? (
-                    <>
-                      <img src={editComicForm.coverUrl} className="absolute inset-0 w-full h-full object-cover" alt="" />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <div className="flex flex-col items-center gap-2">
-                          <Upload className="w-6 h-6 text-white" />
-                          <span className="text-xs font-bold text-white">Change Cover</span>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-center gap-2">
-                      <ImageIcon className="w-8 h-8 text-slate-500" />
-                      <span className="text-xs text-slate-500">Upload Cover Image</span>
-                    </div>
-                  )}
-                  <input 
-                    type="file" 
-                    ref={editComicCoverInputRef} 
-                    className="hidden" 
-                    accept="image/*" 
-                    onChange={(e) => handleFileUpload(e, 'edit-comic-cover')} 
-                    disabled={isUploadingEditCover}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                   <Label className="text-xs text-slate-500 uppercase flex justify-between tracking-widest">Main Audio Track {editComicForm.audioUrl && <span className="text-amber-500 flex items-center gap-1 font-bold"><CheckCircle2 className="w-3 h-3" /> Ready</span>}</Label>
-                   <div 
-                     onClick={() => !isUploadingEditAudio && editComicAudioInputRef.current?.click()}
-                     className={cn(
-                       "relative h-28 rounded-xl border-2 border-dashed border-white/10 hover:border-amber-500/50 bg-white/5 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all",
-                       isUploadingEditAudio && "opacity-50 cursor-wait"
-                     )}
-                   >
-                      {isUploadingEditAudio ? (
-                        <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
-                      ) : editComicForm.audioUrl ? (
-                        <div className="flex flex-col items-center">
-                          <Music className="w-5 h-5 text-amber-500" />
-                          <span className="text-[10px] font-bold text-amber-500">Change Audio Track</span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center">
-                          <FileAudio className="w-5 h-5 text-slate-500" />
-                          <span className="text-[10px] text-slate-500">Upload Audio</span>
-                        </div>
-                      )}
-                      <input 
-                        type="file" 
-                        ref={editComicAudioInputRef}
-                        className="hidden" 
-                        accept="audio/*" 
-                        onChange={(e) => handleFileUpload(e, 'edit-comic-audio')} 
-                        disabled={isUploadingEditAudio}
-                      />
-                   </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-xs text-slate-500 uppercase flex justify-between tracking-widest">
-                  Illustration Pages (PDF)
-                  {editComicForm.illustrationUrls && editComicForm.illustrationUrls.length > 0 && (
-                    <span className="text-sky-500 flex items-center gap-1 font-bold"><CheckCircle2 className="w-3 h-3" /> {editComicForm.illustrationUrls.length} Pages</span>
-                  )}
-                </Label>
-                <div 
-                  onClick={() => !isProcessingEditIllustration && editComicIllustrationsInputRef.current?.click()} 
-                  className={cn(
-                    "relative min-h-[140px] rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-4 cursor-pointer transition-all p-4",
-                    editComicForm.illustrationUrls && editComicForm.illustrationUrls.length > 0 ? "border-sky-500/50 bg-sky-500/5" : "border-white/10 hover:border-sky-500/50 bg-white/5 hover:bg-white/10",
-                    isProcessingEditIllustration && "opacity-50 cursor-wait"
-                  )}
-                >
-                  {isProcessingEditIllustration ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <Loader2 className="w-8 h-8 text-sky-500 animate-spin" />
-                      <p className="text-xs font-bold text-white">Processing PDF...</p>
-                    </div>
-                  ) : editComicForm.illustrationUrls && editComicForm.illustrationUrls.length > 0 ? (
-                    <div className="w-full space-y-3">
-                      <div className="flex items-center justify-center gap-2">
-                        <FileText className="w-5 h-5 text-sky-500" />
-                        <div className="text-left">
-                          <p className="text-xs font-bold text-white">PDF Pages Loaded</p>
-                          <p className="text-[10px] text-slate-500">Click to replace with new PDF</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-5 sm:grid-cols-8 gap-1.5">
-                        {editComicForm.illustrationUrls.slice(0, 16).map((url, index) => (
-                          <div key={index} className="relative aspect-[3/4] bg-white/10 rounded overflow-hidden border border-white/10">
-                            <img src={url} className="w-full h-full object-cover" alt="" />
-                            <div className="absolute bottom-0 right-0 bg-black/60 text-[6px] px-0.5 rounded">{index + 1}</div>
-                          </div>
-                        ))}
+          <form onSubmit={handleUpdateComicSubmit} className="space-y-4 pt-4 h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-4 pb-4 border-b border-white/5">
+              <Label className="text-xs text-slate-500 uppercase block mb-2">Episode Cover</Label>
+              <div 
+                onClick={() => !isUploadingEditCover && editComicCoverInputRef.current?.click()} 
+                className={cn(
+                  "relative h-48 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-all overflow-hidden",
+                  isUploadingEditCover ? "opacity-50 cursor-wait" : "hover:border-amber-500/50 hover:bg-white/5"
+                )}
+              >
+                {isUploadingEditCover ? (
+                  <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+                ) : editComicForm.coverUrl ? (
+                  <>
+                    <img src={editComicForm.coverUrl} className="absolute inset-0 w-full h-full object-cover" alt="" />
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                      <div className="flex flex-col items-center gap-2">
+                        <Upload className="w-6 h-6 text-white" />
+                        <span className="text-xs font-bold text-white">Change Cover</span>
                       </div>
                     </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-2">
-                      <FileText className="w-8 h-8 text-slate-500" />
-                      <span className="text-xs text-slate-500">Upload Illustrations PDF</span>
-                    </div>
-                  )}
-                  <input 
-                    type="file" 
-                    ref={editComicIllustrationsInputRef} 
-                    className="hidden" 
-                    accept=".pdf" 
-                    onChange={(e) => handleFileUpload(e, 'edit-comic-illustrations')} 
-                    disabled={isProcessingEditIllustration} 
-                  />
-                </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <ImageIcon className="w-8 h-8 text-slate-500" />
+                    <span className="text-xs text-slate-500">Upload Cover Image</span>
+                  </div>
+                )}
+                <input 
+                  type="file" 
+                  ref={editComicCoverInputRef} 
+                  className="hidden" 
+                  accept="image/*" 
+                  onChange={(e) => handleFileUpload(e, 'edit-comic-cover')} 
+                  disabled={isUploadingEditCover}
+                />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label className="text-xs text-slate-500 uppercase">Title</Label>
               <Input value={editComicForm.title || ""} onChange={(e) => setEditComicForm({ ...editComicForm, title: e.target.value })} className="bg-white/5 border-white/10" />
+            </div>
+
+            <div className="space-y-2">
+               <Label className="text-xs text-slate-500 uppercase flex justify-between tracking-widest">Main Audio Track {editComicForm.audioUrl && <span className="text-amber-500 flex items-center gap-1 font-bold"><CheckCircle2 className="w-3 h-3" /> Ready</span>}</Label>
+               <div 
+                 onClick={() => soundtrackInputRef.current?.click()}
+                 className="relative h-20 rounded-xl border-2 border-dashed border-white/10 hover:border-amber-500/50 bg-white/5 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all"
+               >
+                  {editComicForm.audioUrl ? (
+                    <div className="flex flex-col items-center">
+                      <Music className="w-5 h-5 text-amber-500" />
+                      <span className="text-[10px] font-bold text-amber-500">Change Audio Track</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center">
+                      <FileAudio className="w-5 h-5 text-slate-500" />
+                      <span className="text-[10px] text-slate-500">Upload Audio</span>
+                    </div>
+                  )}
+                  <input type="file" className="hidden" accept="audio/*" onChange={(e) => handleFileUpload(e, 'edit-comic-audio')} />
+               </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label className="text-xs text-slate-500 uppercase flex justify-between">Soundtrack (Ambient Music) {editComicForm.soundtrackUrl && <div className="flex items-center gap-2"><span className="text-violet-500 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Ready</span><Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); setEditComicForm({...editComicForm, soundtrackUrl: ""}); }} className="h-6 w-6 text-rose-500"><X className="w-3 h-3" /></Button></div>}</Label>
+              <div 
+                onClick={() => !isUploadingEditSoundtrack && editComicSoundtrackInputRef.current?.click()} 
+                className={cn(
+                  "relative h-24 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-all overflow-hidden",
+                  isUploadingEditSoundtrack ? "opacity-50 cursor-wait" : "hover:border-violet-500/50 hover:bg-white/5"
+                )}
+              >
+                {isUploadingEditSoundtrack ? (
+                  <Loader2 className="w-8 h-8 text-violet-500 animate-spin" />
+                ) : editComicForm.soundtrackUrl ? (
+                  <div className="flex flex-col items-center">
+                    <Music2 className="w-6 h-6 text-violet-500 mb-1" />
+                    <span className="text-xs font-bold text-violet-500">Soundtrack Uploaded</span>
+                    <span className="text-[10px] text-slate-500 mt-1 truncate max-w-[150px]">Click to replace</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <Music2 className="w-6 h-6 text-slate-500" />
+                    <span className="text-xs text-slate-500">Upload Soundtrack</span>
+                  </div>
+                )}
+                <input 
+                  type="file" 
+                  ref={editComicSoundtrackInputRef} 
+                  className="hidden" 
+                  accept="audio/*" 
+                  onChange={(e) => handleFileUpload(e, 'edit-comic-soundtrack')} 
+                  disabled={isUploadingEditSoundtrack}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -1092,8 +1020,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                <span className="text-xs font-bold text-white uppercase">Enabled / Visible</span>
             </div>
             <DialogFooter className="pt-4 sticky bottom-0 bg-[#121214] pb-2">
-              <Button type="submit" className="w-full bg-amber-500 text-black hover:bg-amber-400 font-bold" disabled={isUploadingEditCover || isUploadingEditAudio || isProcessingEditIllustration}>
-                {(isUploadingEditCover || isUploadingEditAudio || isProcessingEditIllustration) ? "Processing..." : "Save Changes"}
+              <Button type="submit" className="w-full bg-amber-500 text-black hover:bg-amber-400 font-bold" disabled={isUploadingEditCover || isUploadingEditSoundtrack}>
+                {(isUploadingEditCover || isUploadingEditSoundtrack) ? "Uploading..." : "Save Changes"}
               </Button>
             </DialogFooter>
           </form>

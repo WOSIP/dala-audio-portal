@@ -169,6 +169,7 @@ export const updateComic = async (id: string, updates: any) => {
   const dbUpdates: any = {};
   if (updates.title !== undefined) dbUpdates.title = updates.title;
   if (updates.audioUrl !== undefined) dbUpdates.audio_url = updates.audioUrl;
+  if (updates.soundtrackUrl !== undefined) dbUpdates.soundtrack_url = updates.soundtrackUrl;
   if (updates.coverUrl !== undefined) dbUpdates.cover_url = updates.coverUrl;
   if (updates.illustrationUrls !== undefined) dbUpdates.illustration_urls = updates.illustrationUrls;
   if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
@@ -176,14 +177,11 @@ export const updateComic = async (id: string, updates: any) => {
   if (updates.enabled !== undefined) dbUpdates.enabled = updates.enabled;
   if (updates.deleted !== undefined) dbUpdates.deleted = updates.deleted;
 
-  // Update comic metadata
-  if (Object.keys(dbUpdates).length > 0) {
-    const { error } = await supabase
-      .from('comics')
-      .update(dbUpdates)
-      .eq('id', id);
-    if (error) throw error;
-  }
+  const { error } = await supabase
+    .from('comics')
+    .update(dbUpdates)
+    .eq('id', id);
+  if (error) throw error;
 };
 
 export const deleteComic = async (id: string) => {

@@ -7,9 +7,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "./lib/supabase";
 import { toast } from "sonner";
-import { Music } from "lucide-react";
-import { useIsMobile } from "./hooks/use-mobile";
-import { cn } from "@/lib/utils";
 import "./App.css";
 
 function App() {
@@ -17,7 +14,6 @@ function App() {
   const [comics, setComics] = useState<Comic[]>([]);
   const [userEmail, setUserEmail] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
-  const isMobile = useIsMobile();
 
   // Fetch initial data from Supabase
   useEffect(() => {
@@ -66,7 +62,7 @@ function App() {
         const { data: comicsData, error: comicsError } = await supabase
           .from('comics')
           .select('*')
-          .order('display_order', { ascending: true });
+          .order('created_at', { ascending: false });
 
         if (comicsError) throw comicsError;
 
@@ -74,6 +70,7 @@ function App() {
           id: c.id,
           title: c.title,
           audioUrl: c.audio_url || "",
+          soundtrackUrl: c.soundtrack_url || "",
           coverUrl: c.cover_url || "",
           illustrationUrls: c.illustration_urls || [],
           notes: c.notes || "",
@@ -82,8 +79,7 @@ function App() {
           deleted: c.deleted,
           audioImportLink: c.audio_import_link || "",
           illustrationImportLink: c.illustration_import_link || "",
-          albumId: c.album_id,
-          displayOrder: c.display_order || 0
+          albumId: c.album_id
         }));
         setComics(mappedComics);
       } catch (error: any) {
@@ -174,18 +170,14 @@ function App() {
     setCurrentComicId(activeComics[prevIndex].id);
   };
 
-  const handleAddComic = async (newComicData: Omit<Comic, "id" | "createdAt" | "enabled" | "deleted" | "displayOrder">) => {
+  const handleAddComic = async (newComicData: Omit<Comic, "id" | "createdAt" | "enabled" | "deleted">) => {
     try {
-      const albumComics = comics.filter(c => c.albumId === newComicData.albumId);
-      const nextOrder = albumComics.length > 0 
-        ? Math.max(...albumComics.map(c => c.displayOrder)) + 1 
-        : 1;
-
       const { data, error } = await supabase
         .from('comics')
         .insert([{
           title: newComicData.title,
           audio_url: newComicData.audioUrl,
+          soundtrack_url: newComicData.soundtrackUrl,
           cover_url: newComicData.coverUrl,
           illustration_urls: newComicData.illustrationUrls,
           notes: newComicData.notes,
@@ -193,8 +185,7 @@ function App() {
           illustration_import_link: newComicData.illustrationImportLink,
           album_id: newComicData.albumId,
           enabled: true,
-          deleted: false,
-          display_order: nextOrder
+          deleted: false
         }])
         .select()
         .single();
@@ -207,10 +198,9 @@ function App() {
         createdAt: data.created_at,
         enabled: data.enabled,
         deleted: data.deleted,
-        displayOrder: data.display_order
       };
 
-      setComics(prev => [...prev, newComic].sort((a, b) => a.displayOrder - b.displayOrder));
+      setComics(prev => [newComic, ...prev]);
       if (newComic.albumId === currentAlbumId) {
          setCurrentComicId(newComic.id);
       }
@@ -234,7 +224,7 @@ function App() {
       if (error) throw error;
 
       setComics(prev => prev.map(c => 
-        c.id === id ? { ...c, enabled: !comic.enabled } : c
+        c.id === id ? { ...c, enabled: !c.enabled } : c
       ));
     } catch (error) {
       console.error("Error updating comic:", error);
@@ -266,21 +256,20 @@ function App() {
       const dbUpdates: any = {};
       if (updates.title !== undefined) dbUpdates.title = updates.title;
       if (updates.audioUrl !== undefined) dbUpdates.audio_url = updates.audioUrl;
+      if (updates.soundtrackUrl !== undefined) dbUpdates.soundtrack_url = updates.soundtrackUrl;
       if (updates.coverUrl !== undefined) dbUpdates.cover_url = updates.coverUrl;
       if (updates.illustrationUrls !== undefined) dbUpdates.illustration_urls = updates.illustrationUrls;
       if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
       if (updates.albumId !== undefined) dbUpdates.album_id = updates.albumId;
       if (updates.enabled !== undefined) dbUpdates.enabled = updates.enabled;
       if (updates.deleted !== undefined) dbUpdates.deleted = updates.deleted;
-      if (updates.displayOrder !== undefined) dbUpdates.display_order = updates.displayOrder;
 
-      if (Object.keys(dbUpdates).length > 0) {
-        const { error } = await supabase
-          .from('comics')
-          .update(dbUpdates)
-          .eq('id', id);
-        if (error) throw error;
-      }
+      const { error } = await supabase
+        .from('comics')
+        .update(dbUpdates)
+        .eq('id', id);
+
+      if (error) throw error;
 
       setComics(prev => prev.map(c => 
         c.id === id ? { ...c, ...updates } : c
@@ -291,48 +280,21 @@ function App() {
     }
   };
 
-  const handleReorderComic = async (id: string, direction: 'up' | 'down') => {
-    const comicToMove = comics.find(c => c.id === id);
-    if (!comicToMove) return;
-
-    const sameAlbumComics = comics
-      .filter(c => c.albumId === comicToMove.albumId && !c.deleted)
-      .sort((a, b) => a.displayOrder - b.displayOrder);
-
-    const visibleIndex = sameAlbumComics.findIndex(c => c.id === id);
-    const targetVisibleIndex = direction === 'up' ? visibleIndex - 1 : visibleIndex + 1;
-
-    if (targetVisibleIndex < 0 || targetVisibleIndex >= sameAlbumComics.length) return;
-
-    const neighborComic = sameAlbumComics[targetVisibleIndex];
-
-    try {
-      const orderA = comicToMove.displayOrder;
-      const orderB = neighborComic.displayOrder;
-
-      const { error: error1 } = await supabase
-        .from('comics')
-        .update({ display_order: orderB })
-        .eq('id', comicToMove.id);
-
-      const { error: error2 } = await supabase
-        .from('comics')
-        .update({ display_order: orderA })
-        .eq('id', neighborComic.id);
-
-      if (error1 || error2) throw new Error("Failed to update order in database");
-
-      setComics(prev => prev.map(c => {
-        if (c.id === comicToMove.id) return { ...c, displayOrder: orderB };
-        if (c.id === neighborComic.id) return { ...c, displayOrder: orderA };
-        return c;
-      }).sort((a, b) => a.displayOrder - b.displayOrder));
-
-      toast.success("Order updated");
-    } catch (error: any) {
-      console.error("Error reordering comic:", error);
-      toast.error(error.message || "Failed to reorder comic");
-    }
+  const handleReorderComic = (id: string, direction: 'up' | 'down') => {
+    setComics(prev => {
+      const comicToMove = prev.find(c => c.id === id);
+      if (!comicToMove) return prev;
+      const sameAlbumComics = prev.filter(c => c.albumId === comicToMove.albumId && !c.deleted);
+      const visibleIndex = sameAlbumComics.findIndex(c => c.id === id);
+      const targetVisibleIndex = direction === 'up' ? visibleIndex - 1 : visibleIndex + 1;
+      if (targetVisibleIndex < 0 || targetVisibleIndex >= sameAlbumComics.length) return prev;
+      const neighborId = sameAlbumComics[targetVisibleIndex].id;
+      const newComics = [...prev];
+      const indexA = newComics.findIndex(c => c.id === id);
+      const indexB = newComics.findIndex(c => c.id === neighborId);
+      [newComics[indexA], newComics[indexB]] = [newComics[indexB], newComics[indexA]];
+      return newComics;
+    });
   };
 
   const handleAddAlbum = async (album: Omit<Album, "id" | "createdAt" | "isEnabled">) => {
@@ -454,7 +416,7 @@ function App() {
   }
 
   return (
-    <div className="h-screen bg-[#0a0a0c] text-slate-50 flex flex-col font-sans overflow-hidden">
+    <div className="min-h-screen bg-[#0a0a0c] text-slate-50 flex flex-col font-sans">
       <Navbar 
         onAddComic={handleAddComic} 
         comics={comics}
@@ -469,18 +431,30 @@ function App() {
         onToggleAlbumEnable={handleToggleAlbumEnable}
       />
       
-      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <main className="flex-1 flex flex-col lg:flex-row-reverse overflow-hidden">
+        {/* Sidebar - Moved to Right (lg:flex-row-reverse) */}
+        <ComicSidebar 
+          albums={accessibleAlbums}
+          currentAlbumId={currentAlbumId}
+          onAlbumSelect={handleAlbumSelect}
+          comics={activeComics} 
+          currentComicId={currentComic?.id || ""}
+          onComicSelect={handleComicSelect}
+          userEmail={userEmail}
+          onSetUserEmail={setUserEmail}
+        />
+
         {/* Main Player Area */}
-        <div className="flex-1 relative overflow-y-auto h-full lg:h-[calc(100vh-80px)] p-6 lg:p-12 border-b lg:border-b-0 lg:border-r border-white/5 scroll-smooth">
-          <div className="max-w-4xl mx-auto w-full pb-20">
+        <div className="flex-1 relative overflow-y-auto lg:h-[calc(100vh-80px)] p-6 lg:p-12 border-r border-white/5">
+          <div className="max-w-4xl mx-auto w-full">
             {activeComics.length > 0 ? (
               <AnimatePresence mode="wait">
                 <motion.div
                   key={currentComic?.id || 'none'}
-                  initial={{ opacity: 0, scale: 0.98, y: 10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 1.02, y: -10 }}
-                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
                 >
                   <AudioPlayer 
                     currentComic={currentComic} 
@@ -490,80 +464,35 @@ function App() {
                   />
                   
                   <div className="mt-12">
-                    <div className="flex items-center gap-3 mb-6 opacity-60">
-                       <div className="h-[1px] flex-1 bg-white/10" />
-                       <h2 className="text-[10px] font-black uppercase tracking-[0.3em] whitespace-nowrap">Episode Details</h2>
-                       <div className="h-[1px] flex-1 bg-white/10" />
-                    </div>
-                    
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.4 }}
-                      className="bg-white/[0.02] border border-white/10 rounded-[2.5rem] p-8 lg:p-10 shadow-2xl backdrop-blur-sm relative overflow-hidden group"
-                    >
-                      <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 blur-[100px] -z-10 transition-colors group-hover:bg-amber-500/10" />
-                      <p className="text-lg lg:text-xl leading-relaxed text-slate-300 font-medium">
+                    <h2 className="text-xl font-bold mb-4 opacity-50 uppercase tracking-widest text-xs">Description</h2>
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-6 prose prose-invert max-w-none">
+                      <p className="text-lg leading-relaxed text-slate-300">
                         {currentComic.notes || "This Dala comic takes you on a journey through vibrant soundscapes and captivating narration. Immerse yourself in the story as every detail comes to life through the power of audio storytelling."}
                       </p>
-                      
-                      <div className="mt-8 flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-slate-500">
-                           <Music className="w-5 h-5" />
-                        </div>
-                        <div className="flex flex-col">
-                           <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Category</span>
-                           <span className="text-sm font-bold text-white">Audio Storytelling</span>
-                        </div>
-                      </div>
-                    </motion.div>
+                    </div>
                   </div>
                 </motion.div>
               </AnimatePresence>
             ) : (
               <div className="h-full flex items-center justify-center text-slate-500 py-32">
-                <div className="text-center space-y-6">
-                  <div className="w-32 h-32 bg-white/[0.03] rounded-[3rem] flex items-center justify-center mx-auto border border-white/10 relative overflow-hidden group">
-                    <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="text-center space-y-4">
+                  <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto">
                     <motion.div
                       animate={{ rotate: 360 }}
-                      transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
+                      transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
                     >
-                       <img 
-                        src={albums.find(a => a.id === currentAlbumId)?.coverUrl} 
-                        className="w-16 h-16 rounded-full opacity-30 object-cover" 
-                        alt="" 
-                       />
+                       <img src={albums.find(a => a.id === currentAlbumId)?.coverUrl} className="w-12 h-12 rounded-full opacity-20" alt="" />
                     </motion.div>
                   </div>
-                  <div className="space-y-2">
-                    <p className="text-xl font-black text-white uppercase tracking-tighter">Collection Empty</p>
-                    <p className="text-sm text-slate-400 font-medium max-w-[280px] mx-auto">
-                      Select another album from the sidebar or wait for new content to be uploaded.
-                    </p>
-                  </div>
+                  <p className="text-lg font-medium">No episodes in this album yet.</p>
+                  <p className="text-sm">Select another album or upload some comics!</p>
                 </div>
               </div>
             )}
           </div>
           
-          {/* Atmospheric Background Glows */}
-          <div className="fixed top-1/4 -left-20 w-[600px] h-[600px] bg-amber-500/5 rounded-full blur-[120px] -z-10 pointer-events-none" />
-          <div className="fixed bottom-1/4 -right-20 w-[400px] h-[400px] bg-amber-500/5 rounded-full blur-[100px] -z-10 pointer-events-none" />
-        </div>
-
-        {/* Sidebar - Integrated Visuals */}
-        <div className={cn("h-full lg:h-auto overflow-y-auto", isMobile ? "flex-1" : "")}>
-          <ComicSidebar 
-            albums={accessibleAlbums}
-            currentAlbumId={currentAlbumId}
-            onAlbumSelect={handleAlbumSelect}
-            comics={activeComics} 
-            currentComicId={currentComic?.id || ""}
-            onComicSelect={handleComicSelect}
-            userEmail={userEmail}
-            onSetUserEmail={setUserEmail}
-          />
+          {/* Subtle Background Glow */}
+          <div className="fixed top-1/2 left-1/4 -translate-y-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-amber-500/10 rounded-full blur-[120px] -z-10 pointer-events-none" />
         </div>
       </main>
 

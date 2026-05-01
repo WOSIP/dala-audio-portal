@@ -1,38 +1,26 @@
-# UI/UX Enhancement Plan: Premium Album & Sidebar Experience
+Plan: Implement modification of comic soundtracks.
 
-## Goal
-Elevate the visual presentation of the album collection and improve the sidebar's UX, focusing on a premium "audio-first" feel and better mobile responsiveness.
+**Schema Changes:**
+1.  **Database:** Add a new column `soundtrack_url` (type: TEXT, nullable) to the `comics` table.
+2.  **Storage:** Create a new Supabase Storage bucket named `comic_soundtracks`.
 
-## 1. Visual Overhaul of Album Selection
-- **Premium Album Cards**:
-    - Enhance the 3D stack effect with deeper shadows and dynamic rotations using Framer Motion.
-    - Implement a "Glass-Gold" theme for the active album, using gradients and blur effects.
-    - Add a "Live" waveform indicator that feels more integrated into the cover art.
-    - Improve typography with tighter tracking and bold weights for a "high-end" look.
-- **Improved Horizontal Scroll**:
-    - Add custom "Next/Prev" arrow buttons (visible on hover) for desktop.
-    - Ensure perfect snap-points for mobile swiping.
-    - Add a subtle background glow that changes color/intensity based on the active album.
+**Agent Assignments:**
 
-## 2. Sidebar Navigation & Hierarchy
-- **Section Headers**: Use more distinct visual separators with micro-animations.
-- **Episode List**:
-    - Implement a cleaner list design with better contrast for "Now Playing".
-    - Add a "Playing" animation to the active episode's thumbnail.
-    - Improve touch targets for mobile users.
+**1. Supabase Engineer:**
+    *   Execute Supabase database migration to add the `soundtrack_url` column to the `comics` table.
+    *   Configure the `comic_soundtracks` storage bucket with appropriate policies (e.g., authenticated users can upload/update).
+    *   Implement backend logic in `src/lib/supabase.ts` for:
+        *   Uploading soundtrack files to the `comic_soundtracks` bucket.
+        *   Updating the `comics.soundtrack_url` with the uploaded file's URL.
+        *   Handling file deletion or replacement.
 
-## 3. Mobile UX Optimization
-- **Responsive Layout**: 
-    - Adjust the sidebar width and padding for smaller screens.
-    - Ensure the "Access Control" (email unlock) is sleek and doesn't take up too much vertical space.
-    - Fix the "comic list under audio buttons" issue by ensuring the sidebar has its own scroll context or using a more compact layout on mobile.
+**2. Frontend Engineer:**
+    *   Modify `src/components/AdminPanel.tsx` (or a related component) to include a UI element for:
+        *   Selecting and uploading soundtrack files for a specific comic.
+        *   Displaying the current soundtrack if available.
+        *   Triggering the backend upload/update function.
+    *   Ensure the UI integrates seamlessly with the existing admin panel features.
 
-## 4. Technical Refinement
-- **Framer Motion**: Use `layout` props for smooth transitions between albums and lists.
-- **Tailwind CSS**: Use `backdrop-blur`, `shadow-2xl`, and `ring` utilities for depth.
-- **Accessibility**: Ensure ARIA labels and keyboard navigation are maintained.
-
-## 5. Preservation
-- No changes to Supabase logic or core data handling.
-- Preserve existing "Admin Panel" and "Audio Player" functionality.
-- Maintain the established Amber/Dark color palette.
+**Notes:**
+- Ensure existing comic cover image modification, audio playback, and access policies remain unaffected.
+- All changes must be backward compatible.

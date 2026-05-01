@@ -4,15 +4,15 @@ import { Comic, Album } from "../types";
 import { Headphones } from "lucide-react";
 
 interface NavbarProps {
-  onAddComic: (comic: Omit<Comic, "id" | "createdAt" | "enabled" | "deleted">) => Promise<void>;
+  onAddComic: (comic: Omit<Comic, "id" | "createdAt" | "enabled" | "deleted">) => void;
   comics: Comic[];
   albums: Album[];
   onToggleEnable: (id: string) => void;
   onDeleteComic: (id: string) => void;
-  onUpdateComic: (id: string, updates: Partial<Comic>) => Promise<void>;
+  onUpdateComic: (id: string, updates: Partial<Comic>) => void;
   onReorderComic: (id: string, direction: 'up' | 'down') => void;
-  onAddAlbum: (album: Omit<Album, "id" | "createdAt" | "isEnabled">) => Promise<void>;
-  onUpdateAlbum: (id: string, updates: Partial<Album>) => Promise<void>;
+  onAddAlbum: (album: Omit<Album, "id" | "createdAt" | "isEnabled">) => void;
+  onUpdateAlbum: (id: string, updates: Partial<Album>) => void;
   onDeleteAlbum: (id: string) => void;
   onToggleAlbumEnable: (id: string) => void;
 }
