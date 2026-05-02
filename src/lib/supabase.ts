@@ -1,141 +1,51 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
+import { AppRole } from "../types";
 
-// Connection details - Using the verified project URL and modern publishable key
-const supabaseUrl = 'https://lhcwliyrlpdrksrzwcbw.supabase.co';
-// Modern publishable key is preferred over legacy anon key
-const supabaseAnonKey = 'sb_publishable_lhRZpzUr9mUaP6VvyQilzA_WYhSF6Am';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Supabase credentials missing.');
+  console.error("Missing Supabase environment variables. Please check your configuration.");
 }
 
-/**
- * Robust Supabase Client with Optimized Retry Logic and Timeout Handling
- */
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    storageKey: 'dala-portal-auth'
-  },
-  global: {
-    headers: { 'x-application-name': 'dala-portal' },
-    /**
-     * Custom fetch with enhanced timeout and diagnostic logging
-     */
-    fetch: async (url, options) => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-        console.warn(`[Supabase] Request to ${url} timed out after 30s`);
-      }, 30000);
-
-      try {
-        const response = await fetch(url, { 
-          ...options, 
-          signal: controller.signal,
-          // Ensure we don't cache database queries in a way that hides connection issues
-          cache: 'no-store'
-        });
-        return response;
-      } catch (err: any) {
-        if (err.name === 'AbortError') {
-          throw new Error('Database request timed out. The server might be under heavy load.');
-        }
-        console.error('[Supabase] Connection error:', err.message);
-        throw err;
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    }
-  },
-  db: {
-    schema: 'public'
-  }
-});
+export const supabase = createClient(supabaseUrl || "", supabaseAnonKey || "");
 
 /**
- * Diagnostic helper to check connection health
+ * Basic connection check
  */
 export const checkConnection = async () => {
   try {
-    const start = Date.now();
-    const { error } = await supabase.from('albums').select('id').limit(1);
-    const duration = Date.now() - start;
-    
+    const { data, error } = await supabase.from('albums').select('id').limit(1);
     if (error) throw error;
-    return { status: 'ok', latency: `${duration}ms` };
-  } catch (error: any) {
-    return { status: 'error', message: error.message };
+    return { status: 'connected', message: 'Database is online and accessible.' };
+  } catch (err: any) {
+    return { status: 'error', message: err.message || 'Failed to connect to database.' };
   }
 };
 
 /**
- * File Upload Helper
+ * Upload a file to a specific storage bucket
  */
 export const uploadFile = async (bucket: string, path: string, file: File) => {
   const { data, error } = await supabase.storage
     .from(bucket)
     .upload(path, file, {
+      cacheControl: '3600',
       upsert: true
     });
-  
+
   if (error) throw error;
   
   const { data: { publicUrl } } = supabase.storage
     .from(bucket)
     .getPublicUrl(data.path);
-    
+
   return publicUrl;
 };
 
 /**
- * User Management Functions (with Promise wrapper for consistency)
+ * User Management: Update a user's enabled status
  */
-
-export const createUserByEmail = async (email: string, name: string, role: string, password?: string) => {
-  const { data, error: signUpError } = await supabase.auth.signUp({
-    email,
-    password: password || 'temp-pass-' + Math.random().toString(36).slice(-8),
-    options: {
-      data: {
-        full_name: name,
-        role: role
-      }
-    }
-  });
-
-  if (signUpError) throw signUpError;
-  if (!data.user) throw new Error("Failed to create user record");
-
-  if (password) {
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ password_hash: password })
-      .eq('id', data.user.id);
-    
-    if (updateError) console.warn("Could not update password_hash:", updateError);
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', data.user.id)
-    .single();
-
-  if (profileError) {
-    return {
-      id: data.user.id,
-      email: data.user.email,
-      full_name: name,
-      is_enabled: true
-    };
-  }
-
-  return profile;
-};
-
 export const updateUserStatus = async (userId: string, isEnabled: boolean) => {
   const { error } = await supabase
     .from('profiles')
@@ -145,31 +55,61 @@ export const updateUserStatus = async (userId: string, isEnabled: boolean) => {
   if (error) throw error;
 };
 
-export const toggleUserStatus = updateUserStatus;
-
-export const updateUserProfile = async (userId: string, updates: { name?: string, role?: string }) => {
-  if (updates.name !== undefined) {
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({ full_name: updates.name })
-      .eq('id', userId);
-    if (profileError) throw profileError;
-  }
-
-  if (updates.role !== undefined) {
-    const { error: roleError } = await supabase
-      .from('user_roles')
-      .update({ role: updates.role })
-      .eq('user_id', userId);
-    if (roleError) throw roleError;
-  }
-};
-
-export const updateUserPassword = async (userId: string, password: string) => {
+/**
+ * User Management: Update user profile information
+ */
+export const updateUserProfile = async (userId: string, data: { full_name?: string; avatar_url?: string }) => {
   const { error } = await supabase
     .from('profiles')
-    .update({ password_hash: password })
+    .update(data)
     .eq('id', userId);
-
+  
   if (error) throw error;
+};
+
+/**
+ * User Management: Update user role
+ */
+export const updateUserRole = async (userId: string, role: AppRole) => {
+  const { error } = await supabase
+    .from('user_roles')
+    .upsert({ user_id: userId, role })
+    .eq('user_id', userId);
+  
+  if (error) throw error;
+};
+
+/**
+ * Auth: Update user password
+ */
+export const updateUserPassword = async (password: string) => {
+  const { error } = await supabase.auth.updateUser({
+    password: password
+  });
+  
+  if (error) throw error;
+};
+
+/**
+ * Auth: Create a user placeholder in profiles (Real auth creation requires Admin API or signup)
+ * In this context, we usually use an edge function or direct profile creation for invitations.
+ */
+export const createUserByEmail = async (email: string, fullName: string, role: AppRole) => {
+  // Note: This only creates the profile/role. The actual auth user must sign up or be created via Admin API.
+  // For the sake of the UI requirements, we'll try to use a RPC or just the profile insert if allowed.
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .insert([{ email, full_name: fullName, is_enabled: true }])
+    .select()
+    .single();
+
+  if (profileError) throw profileError;
+
+  const { error: roleError } = await supabase
+    .from('user_roles')
+    .insert([{ user_id: profile.id, role }]);
+
+  if (roleError) throw roleError;
+
+  return profile;
 };

@@ -6,11 +6,10 @@ import { Navbar } from "./components/Navbar";
 import { AlbumCatalog } from "./components/AlbumCatalog";
 import { Toaster } from "@/components/ui/sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { toast } from "sonner";
-import { Headphones, AlertTriangle, RefreshCw, WifiOff } from "lucide-react";
+import { Headphones } from "lucide-react";
 import { fetchAlbums, fetchComics, fetchComicAudio } from "./data";
-import { Button } from "./components/ui/button";
-import { cn } from "@/lib/utils";
+import { supabase } from "./lib/supabase";
+import { toast } from "sonner";
 import "./App.css";
 
 function App() {
@@ -22,8 +21,6 @@ function App() {
   const [view, setView] = useState<'catalog' | 'player'>('catalog');
   const [isFirstLoad, setIsFirstLoad] = useState(true);
   const [loadingSeconds, setLoadingSeconds] = useState(0);
-  const [isOffline, setIsOffline] = useState(false);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   // Disable swipe-to-refresh during loading
   useEffect(() => {
@@ -48,19 +45,11 @@ function App() {
     return () => clearInterval(interval);
   }, [isLoading]);
 
-  // Fetch initial data from Supabase using robust data helpers
-  const fetchData = useCallback(async (isRetry = false) => {
+  // Fetch initial data from Supabase
+  const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
-      setConnectionError(null);
       
-      if (isRetry) {
-        toast.info("Attempting to reconnect to database...");
-      }
-      
-      console.log("Fetching initial data via helpers...");
-      
-      // Fetch in parallel using the helpers in data.ts which have internal retry and timeout handling
       const [albumsData, comicsData] = await Promise.all([
         fetchAlbums(),
         fetchComics()
@@ -68,27 +57,10 @@ function App() {
 
       setAlbums(albumsData);
       setComics(comicsData);
-      setIsOffline(false);
-      console.log("Data fetched successfully:", { albums: albumsData.length, comics: comicsData.length });
-      
-      if (isRetry) toast.success("Connected successfully!");
     } catch (error: any) {
-      console.error("Critical error fetching data:", error);
-      setIsOffline(true);
-      setConnectionError(error.message || "Connection failed");
-      
-      // Attempt to load empty state but keep existing if any
-      if (!isRetry) {
-        toast.warning("Database connection issues.", {
-          description: "We're having trouble connecting to the database. Showing offline content.",
-          duration: 10000,
-          icon: <AlertTriangle className="w-4 h-4 text-amber-500" />
-        });
-      } else {
-        toast.error("Reconnection failed: " + (error.message || "Please try again later."));
-      }
+      console.error("Error loading data:", error);
+      toast.error("Failed to load content from database.");
     } finally {
-      // Ensure loading state lasts long enough for the splash to be visible but not too long
       const minLoadTime = isFirstLoad ? 1500 : 500;
       setTimeout(() => {
          setIsLoading(false);
@@ -100,6 +72,133 @@ function App() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Handle Admin Operations
+  const handleAddComic = async (newComic: Omit<Comic, "id" | "createdAt" | "enabled" | "deleted">) => {
+    try {
+      const { data, error } = await supabase
+        .from('comics')
+        .insert([{
+          album_id: newComic.albumId,
+          title: newComic.title,
+          audio_url: newComic.audioUrl,
+          cover_url: newComic.coverUrl,
+          illustration_urls: newComic.illustrationUrls,
+          notes: newComic.notes,
+          audio_import_link: newComic.audioImportLink,
+          illustration_import_link: newComic.illustrationImportLink,
+          enabled: true,
+          deleted: false
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      toast.success("Episode published successfully!");
+      fetchData();
+    } catch (error: any) {
+      toast.error("Failed to publish episode: " + error.message);
+    }
+  };
+
+  const handleUpdateComic = async (id: string, updates: Partial<Comic>) => {
+    try {
+      // Map frontend camelCase to backend snake_case if needed
+      const dbUpdates: any = {};
+      if (updates.title !== undefined) dbUpdates.title = updates.title;
+      if (updates.audioUrl !== undefined) dbUpdates.audio_url = updates.audioUrl;
+      if (updates.coverUrl !== undefined) dbUpdates.cover_url = updates.coverUrl;
+      if (updates.illustrationUrls !== undefined) dbUpdates.illustration_urls = updates.illustrationUrls;
+      if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+      if (updates.enabled !== undefined) dbUpdates.enabled = updates.enabled;
+      if (updates.deleted !== undefined) dbUpdates.deleted = updates.deleted;
+
+      const { error } = await supabase
+        .from('comics')
+        .update(dbUpdates)
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success("Episode updated!");
+      fetchData();
+    } catch (error: any) {
+      toast.error("Update failed: " + error.message);
+    }
+  };
+
+  const handleDeleteComic = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('comics')
+        .update({ deleted: true })
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success("Episode removed.");
+      fetchData();
+    } catch (error: any) {
+      toast.error("Removal failed: " + error.message);
+    }
+  };
+
+  const handleAddAlbum = async (newAlbum: Omit<Album, "id" | "createdAt" | "isEnabled">) => {
+    try {
+      const { data, error } = await supabase
+        .from('albums')
+        .insert([{
+          title: newAlbum.title,
+          description: newAlbum.description,
+          cover_url: newAlbum.coverUrl,
+          soundtrack_url: newAlbum.soundtrackUrl,
+          privacy: newAlbum.privacy,
+          is_enabled: true
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      // Handle invitations if any
+      if (newAlbum.invitedAccess?.length > 0) {
+        await supabase.from('album_invitations').insert(
+          newAlbum.invitedAccess.map(inv => ({
+            album_id: data.id,
+            email: inv.email,
+            enabled: inv.enabled
+          }))
+        );
+      }
+
+      toast.success("Album created successfully!");
+      fetchData();
+    } catch (error: any) {
+      toast.error("Failed to create album: " + error.message);
+    }
+  };
+
+  const handleUpdateAlbum = async (id: string, updates: Partial<Album>) => {
+    try {
+      const dbUpdates: any = {};
+      if (updates.title !== undefined) dbUpdates.title = updates.title;
+      if (updates.description !== undefined) dbUpdates.description = updates.description;
+      if (updates.coverUrl !== undefined) dbUpdates.cover_url = updates.coverUrl;
+      if (updates.soundtrackUrl !== undefined) dbUpdates.soundtrack_url = updates.soundtrackUrl;
+      if (updates.privacy !== undefined) dbUpdates.privacy = updates.privacy;
+      if (updates.isEnabled !== undefined) dbUpdates.is_enabled = updates.isEnabled;
+
+      const { error } = await supabase
+        .from('albums')
+        .update(dbUpdates)
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success("Album updated!");
+      fetchData();
+    } catch (error: any) {
+      toast.error("Update failed: " + error.message);
+    }
+  };
 
   const accessibleAlbums = useMemo(() => {
     return albums.filter(album => {
@@ -150,7 +249,6 @@ function App() {
   }, [activeComics, currentComic]);
 
   const loadComicAudio = async (comicId: string) => {
-    if (isOffline) return;
     try {
       setIsAudioFetching(true);
       const audioUrl = await fetchComicAudio(comicId);
@@ -162,7 +260,6 @@ function App() {
       }
     } catch (error) {
       console.error("Error fetching audio:", error);
-      if (!isOffline) toast.error("Could not load audio file");
     } finally {
       setIsAudioFetching(false);
     }
@@ -218,7 +315,7 @@ function App() {
                <h1 className="text-2xl font-black uppercase text-white">World Open Services</h1>
                <p className="text-amber-500 font-bold tracking-widest text-xs uppercase">Dala Audio Portal</p>
                <div className="mt-4 text-white/30 text-[10px] uppercase tracking-tighter">
-                  {connectionError ? "Connection Issue Detected" : `Initializing... ${loadingSeconds.toFixed(1)}s`}
+                  {`Initializing... ${loadingSeconds.toFixed(1)}s`}
                </div>
             </div>
           </motion.div>
@@ -226,39 +323,21 @@ function App() {
       </AnimatePresence>
 
       <Navbar 
-        onAddComic={() => {}} 
+        onAddComic={handleAddComic} 
         comics={comics}
         albums={albums}
-        onToggleEnable={() => {}}
-        onDeleteComic={() => {}}
-        onUpdateComic={() => {}}
+        onToggleEnable={(id) => handleUpdateComic(id, { enabled: !comics.find(c => c.id === id)?.enabled })}
+        onDeleteComic={handleDeleteComic}
+        onDeleteAlbum={(id) => handleUpdateAlbum(id, { isEnabled: false })}
+        onToggleAlbumEnable={(id) => handleUpdateAlbum(id, { isEnabled: !albums.find(a => a.id === id)?.isEnabled })}
+        onUpdateComic={handleUpdateComic}
         onReorderComic={() => {}}
-        onAddAlbum={() => {}}
-        onUpdateAlbum={() => {}}
-        onDeleteAlbum={() => {}}
-        onToggleAlbumEnable={() => {}}
+        onAddAlbum={handleAddAlbum}
+        onUpdateAlbum={handleUpdateAlbum}
         onLogoClick={() => setView('catalog')}
         currentView={view}
       />
       
-      {isOffline && (
-        <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-center gap-4 text-[10px] font-black uppercase tracking-widest text-amber-500">
-          <div className="flex items-center gap-2">
-            <WifiOff className="w-3 h-3" />
-            {connectionError || "Offline Mode"}
-          </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => fetchData(true)}
-            className="h-6 px-3 bg-amber-500 text-black border-none hover:bg-amber-400 font-black text-[8px] rounded-full"
-          >
-            <RefreshCw className={cn("w-2.5 h-2.5 mr-1.5", isLoading && "animate-spin")} />
-            Retry Connection
-          </Button>
-        </div>
-      )}
-
       <main className="flex-1 flex flex-col lg:flex-row-reverse relative">
         <Suspense fallback={null}>
           <AnimatePresence mode="wait">
