@@ -1,72 +1,31 @@
-export interface InvitedAccess {
-  email: string;
-  enabled: boolean;
-}
-
-export interface Author {
-  name: string;
-  avatarUrl?: string;
-}
-
 export interface Album {
   id: string;
   title: string;
-  description?: string; // Ensure this is available for the full description
-  coverUrl: string;
-  soundtrackUrl?: string;
-  createdAt: string;
-  privacy: 'public' | 'private';
-  invitedAccess: InvitedAccess[];
-  isEnabled: boolean;
-  author?: Author;
+  description?: string;
+  cover_url?: string;
+  owner_id: string;
+  created_at: string;
+  album_invitations?: AlbumInvitation[];
+}
+
+export interface AlbumInvitation {
+  id: string;
+  album_id: string;
+  user_id: string;
+  status: string;
+  created_at: string;
 }
 
 export interface Comic {
   id: string;
   title: string;
-  audioUrl?: string;
-  coverUrl: string;
-  illustrationUrls: string[];
+  cover_url?: string;
+  illustration_urls?: string[];
   notes?: string;
-  createdAt: string;
+  created_at: string;
   enabled: boolean;
   deleted: boolean;
-  audioImportLink?: string;
-  illustrationImportLink?: string;
-  albumId: string;
-}
-
-export type AudioTrackImport = {
-  audioUrl: string;
-  message: string;
-};
-
-export type IllustrationPartImport = {
-  coverUrl: string;
-  illustrationUrls: string[];
-  message: string;
-};
-
-export type AppRole = 'admin' | 'editor' | 'viewer' | 'superadmin' | 'moderator' | 'user' | 'role1' | 'role2' | 'role3';
-
-export interface UserRole {
-  id: string;
-  userId: string;
-  role: AppRole;
-  email?: string; // Joined from auth.users or profiles
-}
-
-export interface UserProfile {
-  id: string;
-  email: string;
-  name?: string;
-  avatarUrl?: string;
-  isEnabled: boolean;
-  createdAt: string;
-  password_hash?: string;
-}
-
-export interface UserManagementRecord extends UserProfile {
-  role: AppRole;
-  userId: string;
+  audio_import_link?: string;
+  illustration_import_link?: string;
+  album_id: string;
 }

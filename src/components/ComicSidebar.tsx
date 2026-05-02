@@ -4,7 +4,6 @@ import { Play, ListMusic, Layers, Lock, Mail, CheckCircle, LogOut, Music } from 
 import { ScrollArea } from "./ui/scroll-area";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Skeleton } from "./ui/skeleton";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -18,7 +17,6 @@ interface ComicSidebarProps {
   onComicSelect: (comic: Comic) => void;
   userEmail: string;
   onSetUserEmail: (email: string) => void;
-  isLoading?: boolean;
 }
 
 const Waveform = ({ isActive }: { isActive: boolean }) => (
@@ -53,8 +51,7 @@ export const ComicSidebar: React.FC<ComicSidebarProps> = ({
   currentComicId, 
   onComicSelect,
   userEmail,
-  onSetUserEmail,
-  isLoading = false
+  onSetUserEmail
 }) => {
   const [emailInput, setEmailInput] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
@@ -159,7 +156,9 @@ export const ComicSidebar: React.FC<ComicSidebarProps> = ({
                 currentAlbumId === album.id ? "opacity-100" : "opacity-60 hover:opacity-100"
               )}
             >
+              {/* Album Cover Wrapper */}
               <div className="relative w-18 h-18 sm:w-28 sm:h-28 perspective-[800px]">
+                {/* Decorative Stack Layers */}
                 <motion.div 
                   animate={{ 
                     rotateZ: currentAlbumId === album.id || hoveredAlbumId === album.id ? 6 : 3,
@@ -181,12 +180,14 @@ export const ComicSidebar: React.FC<ComicSidebarProps> = ({
                     loading="lazy"
                   />
                   
+                  {/* Private Badge */}
                   {album.privacy === 'private' && (
                     <div className="absolute top-1 right-1 bg-amber-500/90 backdrop-blur-md rounded-md p-1 z-30">
                       <Lock className="w-2 h-2 sm:w-3 sm:h-3 text-black" />
                     </div>
                   )}
 
+                  {/* Waveform Overlay */}
                   <div className="absolute inset-x-0 bottom-1 sm:bottom-2 z-30">
                     <Waveform isActive={currentAlbumId === album.id || hoveredAlbumId === album.id} />
                   </div>
@@ -213,24 +214,12 @@ export const ComicSidebar: React.FC<ComicSidebarProps> = ({
           </div>
           <h2 className="text-[10px] sm:text-sm font-black uppercase tracking-[0.15em] text-slate-400">Episodes</h2>
         </div>
-        <span className="text-[8px] sm:text-[10px] font-black text-amber-500/80 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
-          {isLoading ? "..." : comics.length}
-        </span>
+        <span className="text-[8px] sm:text-[10px] font-black text-amber-500/80 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">{comics.length}</span>
       </div>
 
       <ScrollArea className="flex-1 h-full min-h-[300px] lg:min-h-0">
         <div className="px-4 sm:px-6 pb-12 space-y-2 sm:space-y-4 pt-1 sm:pt-4">
-          {isLoading ? (
-            [...Array(5)].map((_, i) => (
-              <div key={i} className="flex gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-                <Skeleton className="w-20 h-20 rounded-xl bg-white/5" />
-                <div className="flex flex-col justify-center flex-1 space-y-3">
-                  <Skeleton className="h-4 w-3/4 bg-white/10" />
-                  <Skeleton className="h-3 w-1/2 bg-white/5" />
-                </div>
-              </div>
-            ))
-          ) : comics.length > 0 ? (
+          {comics.length > 0 ? (
             comics.map((comic) => (
               <motion.button
                 key={comic.id}

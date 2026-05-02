@@ -51,10 +51,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const soundtrackRef = useRef<HTMLAudioElement | null>(null);
 
-  const pages = currentComic?.illustrationUrls && currentComic?.illustrationUrls.length > 0 
+  const pages = currentComic.illustrationUrls && currentComic.illustrationUrls.length > 0 
     ? currentComic.illustrationUrls 
-    : [currentComic?.coverUrl];
+    : [currentComic.coverUrl];
 
+  // Sync Soundtrack with Main Audio
   useEffect(() => {
     if (soundtrackRef.current) {
        soundtrackRef.current.volume = isSoundtrackEnabled ? (volume / 100) * 0.4 : 0; 
@@ -62,11 +63,12 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     }
   }, [volume, isMuted, isSoundtrackEnabled]);
 
+  // Reset page index and audio when switching comics
   useEffect(() => {
     setCurrentIllustrationIndex(0);
     setDirection(0);
     
-    if (audioRef.current && currentComic?.audioUrl) {
+    if (audioRef.current && currentComic.audioUrl) {
       audioRef.current.src = currentComic.audioUrl;
       if (isPlaying) {
         audioRef.current.play().catch(err => console.error("Main audio playback failed:", err));
@@ -74,8 +76,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     } else if (audioRef.current) {
       audioRef.current.src = "";
     }
-  }, [currentComic?.id, currentComic?.audioUrl]);
+  }, [currentComic.id, currentComic.audioUrl]);
 
+  // Handle Soundtrack setup and changes
   useEffect(() => {
     if (soundtrackRef.current) {
       if (soundtrackUrl) {
@@ -100,7 +103,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   };
 
   const togglePlay = () => {
-    if (!currentComic?.audioUrl) return;
+    if (!currentComic.audioUrl) return;
     
     if (audioRef.current) {
       if (isPlaying) {
@@ -190,6 +193,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     }
   };
 
+  // Animation variants for the page flip effect
   const variants = {
     enter: (direction: number) => ({
       x: direction > 0 ? 300 : -300,
@@ -215,8 +219,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
   return (
     <Card className="w-full bg-white/5 backdrop-blur-md border-white/10 shadow-2xl p-4 sm:p-6 lg:p-8 flex flex-col gap-5 md:gap-8 rounded-2xl sm:rounded-3xl overflow-hidden relative">
+      {/* Loading Overlay */}
       <AnimatePresence>
-        {(isFetching || !currentComic?.audioUrl) && (
+        {(isFetching || !currentComic.audioUrl) && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -233,13 +238,14 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       </AnimatePresence>
 
       <div className="flex flex-col gap-5 md:gap-8">
+        {/* Illustration Swiper Area */}
         <div 
           className="relative w-full aspect-[4/3] sm:aspect-[16/10] md:aspect-[16/9] rounded-xl sm:rounded-2xl overflow-hidden bg-black/60 border border-white/5 group shadow-inner"
           style={{ perspective: "1000px" }}
         >
           <AnimatePresence initial={false} custom={direction} mode="popLayout">
             <motion.div
-              key={`${currentComic?.id}-${currentIllustrationIndex}`}
+              key={`${currentComic.id}-${currentIllustrationIndex}`}
               custom={direction}
               variants={variants}
               initial="enter"
@@ -253,6 +259,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
               }}
               className="absolute inset-0 w-full h-full"
             >
+              {/* Blurred Background Layer for "Format Adjustment" */}
               <div className="absolute inset-0 z-0 overflow-hidden">
                 <img 
                   src={pages[currentIllustrationIndex]} 
@@ -263,10 +270,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                 />
               </div>
 
+              {/* Main Illustration Layer */}
               <div className="relative z-10 w-full h-full flex items-center justify-center p-2 sm:p-4 md:p-8">
                 <img 
                   src={pages[currentIllustrationIndex]} 
-                  alt={`${currentComic?.title} - Page ${currentIllustrationIndex + 1}`}
+                  alt={`${currentComic.title} - Page ${currentIllustrationIndex + 1}`}
                   className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
                   loading="lazy"
                 />
@@ -274,8 +282,10 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             </motion.div>
           </AnimatePresence>
 
+          {/* Overlays and Controls */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 pointer-events-none z-20" />
           
+          {/* Page Indicator */}
           <div className="absolute top-2 left-2 sm:top-4 sm:left-4 flex items-center gap-1.5 sm:gap-2 bg-black/60 backdrop-blur-md px-2 py-0.5 sm:px-3 sm:py-1.5 rounded-full border border-white/10 z-30">
             <BookOpen className="w-2.5 h-2.5 sm:w-4 sm:h-4 text-amber-500" />
             <span className="text-[7px] sm:text-[10px] font-bold tracking-widest text-white uppercase">
@@ -283,6 +293,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             </span>
           </div>
 
+          {/* Navigation Arrows (For Pages) */}
           {pages.length > 1 && (
             <div className="absolute inset-y-0 inset-x-1 sm:inset-x-4 flex items-center justify-between pointer-events-none z-30">
               <Button
@@ -307,11 +318,12 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           )}
         </div>
 
+        {/* Audio Controls Area */}
         <div className="w-full flex flex-col">
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 sm:gap-6 mb-4 md:mb-8">
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-1.5 sm:mb-3">
-                <h1 className="text-xl sm:text-3xl md:text-5xl font-black tracking-tighter text-white">{currentComic?.title}</h1>
+                <h1 className="text-xl sm:text-3xl md:text-5xl font-black tracking-tighter text-white">{currentComic.title}</h1>
                 {author && (
                   <BuilderBadge 
                     name={author.name} 
@@ -335,7 +347,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                    </Button>
                 )}
               </div>
-              <p className="text-slate-400 text-xs sm:text-base md:text-lg line-clamp-2 max-w-2xl">{currentComic?.notes || "A Dala original audio comic experience."}</p>
+              <p className="text-slate-400 text-xs sm:text-base md:text-lg line-clamp-2 max-w-2xl">{currentComic.notes || "A Dala original audio comic experience."}</p>
             </div>
 
             <div className="flex items-center gap-3 w-full sm:w-auto md:w-44 bg-white/5 border border-white/10 p-1.5 sm:p-2 px-3 sm:px-4 rounded-full">
@@ -374,6 +386,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
             <div className="flex items-center justify-center">
               <div className="flex items-center gap-2.5 sm:gap-4 md:gap-8 bg-white/5 backdrop-blur-md px-4 sm:px-8 py-2.5 sm:py-4 rounded-full border border-white/10">
+                {/* Previous Comic */}
                 <button 
                   onClick={onPreviousComic}
                   className="hover:bg-white/10 text-slate-400 hover:text-white rounded-full h-7 w-7 sm:h-10 sm:w-10 transition-colors flex items-center justify-center"
@@ -382,6 +395,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                   <SkipBack className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                 </button>
                 
+                {/* Back 10s */}
                 <button 
                   onClick={skipBackward}
                   className="hover:bg-white/10 text-slate-400 hover:text-white rounded-full h-6 w-6 sm:h-9 sm:w-9 transition-colors flex items-center justify-center"
@@ -390,9 +404,10 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                   <RotateCcw className="w-3 h-3 sm:w-4 sm:h-4" />
                 </button>
 
+                {/* Main Play/Pause Launch Control */}
                 <button 
                   onClick={togglePlay}
-                  disabled={!currentComic?.audioUrl}
+                  disabled={!currentComic.audioUrl}
                   className="h-10 w-10 sm:h-16 sm:w-16 rounded-full bg-amber-500 hover:bg-amber-400 text-black shadow-2xl transition-transform hover:scale-110 active:scale-95 flex items-center justify-center disabled:opacity-50 disabled:cursor-wait"
                   title={isPlaying ? "Pause" : "Play"}
                 >
@@ -403,6 +418,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                   )}
                 </button>
 
+                {/* Forward 10s */}
                 <button 
                   onClick={skipForward}
                   className="hover:bg-white/10 text-slate-400 hover:text-white rounded-full h-6 w-6 sm:h-9 sm:w-9 transition-colors flex items-center justify-center"
@@ -411,6 +427,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
                   <RotateCw className="w-3 h-3 sm:w-4 sm:h-4" />
                 </button>
 
+                {/* Next Comic */}
                 <button 
                   onClick={onNextComic}
                   className="hover:bg-white/10 text-slate-400 hover:text-white rounded-full h-7 w-7 sm:h-10 sm:w-10 transition-colors flex items-center justify-center"
