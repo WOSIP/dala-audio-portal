@@ -16,6 +16,7 @@ function App() {
   const [comics, setComics] = useState<Comic[]>([]);
   const [userEmail, setUserEmail] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isComicsLoading, setIsComicsLoading] = useState(false);
   const [isAudioFetching, setIsAudioFetching] = useState(false);
   const [view, setView] = useState<'catalog' | 'player'>('catalog');
   const [isFirstLoad, setIsFirstLoad] = useState(true);
@@ -44,40 +45,33 @@ function App() {
     return () => clearInterval(interval);
   }, [isLoading]);
 
-  // Fetch initial data from Supabase in parallel
+  // Sequential fetching strategy: Albums -> Comics Metadata -> Audio on Demand
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch albums and comics in parallel
-        // Optimization: Do NOT fetch audio_url initially to speed up portal load
-        const [albumsResponse, comicsResponse] = await Promise.all([
-          supabase.from('albums').select('*, album_invitations(*)'),
-          supabase.from('comics')
-            .select('id, title, cover_url, illustration_urls, notes, created_at, enabled, deleted, audio_import_link, illustration_import_link, album_id')
-            .order('created_at', { ascending: false })
-        ]);
-
+        console.log("Sequential data fetch starting...");
+        
+        // STEP 1: Fetch albums first to show catalog ASAP
+        const albumsResponse = await supabase.from('albums').select('*, album_invitations(*)');
         if (albumsResponse.error) throw albumsResponse.error;
-        if (comicsResponse.error) throw comicsResponse.error;
-
         const albumsData = albumsResponse.data || [];
-        const comicsData = comicsResponse.data || [];
 
-        // Fetch profiles for the albums
-        const ownerIds = Array.from(new Set(albumsData.map((a: any) => a.owner_id)));
-        const { data: profilesData, error: profilesError } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url')
-          .in('id', ownerIds);
+        // STEP 2: Fetch profiles for the albums
+        const ownerIds = Array.from(new Set(albumsData.map((a: any) => a.owner_id))).filter(Boolean);
+        let profilesMap: Record<string, any> = {};
+        if (ownerIds.length > 0) {
+          const { data: profilesData, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id, full_name, avatar_url')
+            .in('id', ownerIds);
 
-        if (profilesError) {
-           console.warn("Could not fetch profiles:", profilesError);
+          if (!profilesError) {
+            profilesMap = (profilesData || []).reduce((acc: any, p: any) => {
+              acc[p.id] = p;
+              return acc;
+            }, {});
+          }
         }
-
-        const profilesMap = (profilesData || []).reduce((acc: any, p: any) => {
-          acc[p.id] = p;
-          return acc;
-        }, {});
 
         const mappedAlbums: Album[] = albumsData.map((a: any) => ({
           id: a.id,
@@ -101,10 +95,27 @@ function App() {
           }))
         }));
 
+        setAlbums(mappedAlbums);
+        
+        // STEP 3: Hide splash screen once albums are ready
+        setTimeout(() => {
+           setIsLoading(false);
+           setTimeout(() => setIsFirstLoad(false), 800);
+        }, 500);
+
+        // STEP 4: Fetch comics metadata in the background
+        setIsComicsLoading(true);
+        const comicsResponse = await supabase.from('comics')
+          .select('id, title, cover_url, illustration_urls, notes, created_at, enabled, deleted, audio_import_link, illustration_import_link, album_id')
+          .order('created_at', { ascending: false });
+
+        if (comicsResponse.error) throw comicsResponse.error;
+        const comicsData = comicsResponse.data || [];
+
         const mappedComics: Comic[] = comicsData.map((c: any) => ({
           id: c.id,
           title: c.title,
-          audioUrl: undefined, // Lazy loaded
+          audioUrl: undefined, // Explicitly lazy-loaded later
           coverUrl: c.cover_url || "",
           illustrationUrls: c.illustration_urls || [],
           notes: c.notes || "",
@@ -112,21 +123,17 @@ function App() {
           enabled: c.enabled,
           deleted: c.deleted,
           audioImportLink: c.audio_import_link || "",
-          illustrationImportLink: c.illustration_import_link || "",
+          illustration_import_link: c.illustration_import_link || "",
           albumId: c.album_id
         }));
 
-        setAlbums(mappedAlbums);
         setComics(mappedComics);
+        console.log("Sequential data fetch complete:", { albums: mappedAlbums.length, comics: mappedComics.length });
       } catch (error: any) {
-        console.error("Error fetching data:", error);
-        toast.error("Failed to load data from database");
+        console.error("Critical error fetching data:", error);
+        toast.error("Failed to load data from database: " + (error.message || "Unknown error"));
       } finally {
-        // Small delay to ensure minimum splash duration if it's too fast
-        setTimeout(() => {
-           setIsLoading(false);
-           setTimeout(() => setIsFirstLoad(false), 800);
-        }, 1000);
+        setIsComicsLoading(false);
       }
     };
 
@@ -152,17 +159,6 @@ function App() {
     }
   }, [accessibleAlbums, currentAlbumId, view]);
 
-  useEffect(() => {
-    if (view === 'player') {
-      const isAccessible = accessibleAlbums.some(a => a.id === currentAlbumId);
-      if (!isAccessible && accessibleAlbums.length > 0) {
-        setCurrentAlbumId(accessibleAlbums[0].id);
-      } else if (accessibleAlbums.length === 0) {
-        setCurrentAlbumId("");
-      }
-    }
-  }, [accessibleAlbums, currentAlbumId, view]);
-
   const activeComics = useMemo(() => {
     return comics.filter(c => !c.deleted && c.enabled && c.albumId === currentAlbumId);
   }, [comics, currentAlbumId]);
@@ -173,8 +169,6 @@ function App() {
     if (activeComics.length > 0) {
       const exists = activeComics.find(c => c.id === currentComicId);
       if (!exists) {
-        // When switching albums, we should select the first comic
-        // handleComicSelect will be called which will fetch the audio
         handleComicSelect(activeComics[0]);
       }
     } else {
@@ -219,6 +213,7 @@ function App() {
   };
 
   const handleComicSelect = (comic: Comic) => {
+    if (!comic) return;
     setCurrentComicId(comic.id);
     if (!comic.audioUrl) {
       fetchComicAudio(comic.id);
@@ -228,7 +223,6 @@ function App() {
   const handleAlbumSelect = (albumId: string) => {
     setCurrentAlbumId(albumId);
     setView('player');
-    // Scroll to top when switching to player on mobile
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -246,7 +240,6 @@ function App() {
 
   const handleAddComic = async (newComicData: Omit<Comic, "id" | "createdAt" | "enabled" | "deleted">) => {
     try {
-      // Validate album_id before insert - ensure it's a valid UUID or null
       const albumId = (newComicData.albumId && newComicData.albumId.length > 0) ? newComicData.albumId : null;
 
       const { data, error } = await supabase
@@ -462,8 +455,6 @@ function App() {
 
   const handleDeleteAlbum = async (id: string) => {
     try {
-      // Step 1: Perform the deletion in the database
-      // The ON DELETE CASCADE constraint in the DB will handle related comics and invitations
       const { error } = await supabase
         .from('albums')
         .delete()
@@ -471,14 +462,10 @@ function App() {
 
       if (error) throw error;
 
-      // Step 2: Update local state for albums
       const updatedAlbums = albums.filter(a => a.id !== id);
       setAlbums(updatedAlbums);
-
-      // Step 3: Update local state for comics (sync with DB cascade)
       setComics(prev => prev.filter(c => c.albumId !== id));
 
-      // Step 4: Handle active album navigation
       if (currentAlbumId === id) {
         if (updatedAlbums.length > 0) {
           setCurrentAlbumId(updatedAlbums[0].id);
@@ -586,7 +573,6 @@ function App() {
               transition={{ duration: 0.4, ease: "easeOut" }}
               className="flex-1 flex flex-col lg:flex-row-reverse w-full h-full"
             >
-              {/* Sidebar - Moved to Right (lg:flex-row-reverse) */}
               <ComicSidebar 
                 albums={accessibleAlbums}
                 currentAlbumId={currentAlbumId}
@@ -596,12 +582,12 @@ function App() {
                 onComicSelect={handleComicSelect}
                 userEmail={userEmail}
                 onSetUserEmail={setUserEmail}
+                isLoading={isComicsLoading}
               />
 
-              {/* Main Player Area */}
               <div className="flex-1 relative overflow-y-auto lg:h-[calc(100vh-80px)] p-3 sm:p-6 lg:p-12 border-b lg:border-b-0 lg:border-r border-white/5 bg-[#0a0a0c]">
                 <div className="max-w-4xl mx-auto w-full">
-                  {activeComics.length > 0 ? (
+                  {(activeComics.length > 0 || isComicsLoading) ? (
                     <AnimatePresence mode="wait">
                       <motion.div
                         key={currentComic?.id || 'none'}
@@ -616,14 +602,14 @@ function App() {
                           onPreviousComic={handlePreviousComic}
                           author={currentAlbum?.author}
                           soundtrackUrl={currentAlbum?.soundtrackUrl}
-                          isFetching={isAudioFetching}
+                          isFetching={isAudioFetching || isComicsLoading}
                         />
                         
                         <div className="mt-6 sm:mt-12">
                           <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4 opacity-50 uppercase tracking-widest text-[9px] sm:text-xs">Description</h2>
                           <div className="bg-white/[0.03] border border-white/10 rounded-xl sm:rounded-2xl p-4 sm:p-6 prose prose-invert max-w-none">
                             <p className="text-sm sm:text-lg leading-relaxed text-slate-400">
-                              {currentComic.notes || "This Dala comic takes you on a journey through vibrant soundscapes and captivating narration. Immerse yourself in the story as every detail comes to life through the power of audio storytelling."}
+                              {currentComic?.notes || "This Dala comic takes you on a journey through vibrant soundscapes and captivating narration. Immerse yourself in the story as every detail comes to life through the power of audio storytelling."}
                             </p>
                           </div>
                         </div>
@@ -646,7 +632,6 @@ function App() {
                   )}
                 </div>
                 
-                {/* Subtle Background Glow */}
                 <div className="fixed top-1/2 left-1/4 -translate-y-1/2 -translate-x-1/2 w-[300px] sm:w-[600px] h-[300px] sm:h-[600px] bg-amber-500/10 rounded-full blur-[80px] sm:blur-[120px] -z-10 pointer-events-none" />
               </div>
             </motion.div>

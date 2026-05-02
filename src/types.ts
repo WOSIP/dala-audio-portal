@@ -11,7 +11,7 @@ export interface Author {
 export interface Album {
   id: string;
   title: string;
-  description?: string;
+  description?: string; // Ensure this is available for the full description
   coverUrl: string;
   soundtrackUrl?: string;
   createdAt: string;

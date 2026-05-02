@@ -1,11 +1,20 @@
 import React, { useState, useMemo } from "react";
 import { Album } from "../types";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Grid, List, Play, Clock, User, Shield, ArrowRight } from "lucide-react";
+import { Search, Grid, List, Play, Clock, User, Shield, ArrowRight, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { AlbumSkeleton, HeroSkeleton } from "./AlbumSkeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "./ui/dialog";
+import { Button } from "./ui/button";
 
 interface AlbumCatalogProps {
   albums: Album[];
@@ -16,6 +25,7 @@ interface AlbumCatalogProps {
 export const AlbumCatalog: React.FC<AlbumCatalogProps> = ({ albums, onAlbumSelect, isLoading }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [layout, setLayout] = useState<'grid' | 'list'>('grid');
+  const [infoAlbum, setInfoAlbum] = useState<Album | null>(null);
 
   const filteredAlbums = useMemo(() => {
     return albums.filter(album => 
@@ -79,7 +89,7 @@ export const AlbumCatalog: React.FC<AlbumCatalogProps> = ({ albums, onAlbumSelec
               Premium Audio Experience
             </Badge>
             <h1 className="text-3xl sm:text-5xl md:text-7xl font-black text-white uppercase tracking-tighter leading-[0.9] mb-2 sm:mb-4">
-              Explore the <span className="text-amber-500">Helloopass</span> Universe
+              Imagine the <span className="text-amber-500">Helloopass</span> Universe
             </h1>
             <p className="text-xs sm:text-base md:text-lg text-slate-400 max-w-2xl mx-auto font-medium leading-relaxed">
               Immerse yourself in high-quality audio storytelling and original soundtracks.
@@ -187,13 +197,25 @@ export const AlbumCatalog: React.FC<AlbumCatalogProps> = ({ albums, onAlbumSelec
                     layout === 'list' && "p-0 py-2 sm:py-4"
                   )}>
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                         <h3 className="text-base sm:text-xl font-black text-white uppercase tracking-tight group-hover:text-amber-500 transition-colors truncate">
-                          {album.title}
-                        </h3>
-                        {album.isEnabled === false && (
-                          <Badge variant="outline" className="border-rose-500/50 text-rose-500 text-[7px] sm:text-[8px] uppercase font-black">Disabled</Badge>
-                        )}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                           <h3 className="text-base sm:text-xl font-black text-white uppercase tracking-tight group-hover:text-amber-500 transition-colors truncate">
+                            {album.title}
+                          </h3>
+                          {album.isEnabled === false && (
+                            <Badge variant="outline" className="border-rose-500/50 text-rose-500 text-[7px] sm:text-[8px] uppercase font-black shrink-0">Disabled</Badge>
+                          )}
+                        </div>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setInfoAlbum(album);
+                          }}
+                          className="p-1.5 rounded-full hover:bg-white/10 text-slate-500 hover:text-amber-500 transition-colors shrink-0"
+                          title="View Details"
+                        >
+                          <Info className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
                       </div>
                       <div className="flex items-center gap-1.5 sm:gap-2 text-slate-500">
                         <User className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
@@ -202,7 +224,7 @@ export const AlbumCatalog: React.FC<AlbumCatalogProps> = ({ albums, onAlbumSelec
                     </div>
 
                     <p className="text-slate-400 text-[10px] sm:text-sm line-clamp-2 leading-relaxed font-medium">
-                      {album.description || "Explore this premium Helloopass audio collection featuring exclusive content and soundtracks."}
+                      {album.description || "Imagine this premium Helloopass audio collection featuring exclusive content and soundtracks."}
                     </p>
 
                     <div className="pt-2 sm:pt-4 border-t border-white/5 flex items-center justify-between">
@@ -249,6 +271,79 @@ export const AlbumCatalog: React.FC<AlbumCatalogProps> = ({ albums, onAlbumSelec
           )}
         </AnimatePresence>
       </div>
+
+      {/* Album Details Dialog */}
+      <Dialog open={!!infoAlbum} onOpenChange={(open) => !open && setInfoAlbum(null)}>
+        <DialogContent className="max-w-2xl bg-[#0d0d0f] border-white/10 text-white overflow-hidden p-0 sm:rounded-3xl">
+          {infoAlbum && (
+            <div className="flex flex-col md:flex-row">
+              <div className="w-full md:w-2/5 aspect-square md:aspect-auto md:h-full shrink-0">
+                <img 
+                  src={infoAlbum.coverUrl || "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=600&auto=format&fit=crop"} 
+                  alt={infoAlbum.title}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="p-6 md:p-8 flex flex-col justify-between flex-1">
+                <div className="space-y-4">
+                  <DialogHeader className="text-left p-0">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[8px] uppercase font-black">Album Info</Badge>
+                      {infoAlbum.privacy === 'private' && (
+                        <Badge variant="outline" className="border-white/20 text-slate-400 text-[8px] uppercase font-black flex items-center gap-1">
+                          <Shield className="w-2 h-2" /> Private
+                        </Badge>
+                      )}
+                    </div>
+                    <DialogTitle className="text-2xl md:text-3xl font-black uppercase tracking-tight text-white">
+                      {infoAlbum.title}
+                    </DialogTitle>
+                  </DialogHeader>
+
+                  <div className="flex items-center gap-3 text-slate-400">
+                    <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center shrink-0">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase font-black tracking-widest text-slate-500">Author</p>
+                      <p className="text-sm font-bold text-white uppercase">{infoAlbum.author?.name || "Unknown Author"}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-[10px] uppercase font-black tracking-widest text-slate-500">Description</p>
+                    <div className="max-h-[150px] md:max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                      <p className="text-sm md:text-base text-slate-300 leading-relaxed font-medium whitespace-pre-wrap">
+                        {infoAlbum.description || "Imagine this premium Helloopass audio collection featuring exclusive content and soundtracks. Immerse yourself in the story as every detail comes to life through the power of audio storytelling."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <DialogFooter className="mt-8 flex-col sm:flex-row gap-3">
+                  <div className="flex items-center gap-4 text-slate-500 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span className="text-[10px] font-black uppercase tracking-widest">
+                        {new Date(infoAlbum.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                  <Button 
+                    onClick={() => {
+                      onAlbumSelect(infoAlbum.id);
+                      setInfoAlbum(null);
+                    }}
+                    className="bg-amber-500 hover:bg-amber-600 text-black font-black uppercase tracking-widest rounded-xl px-8 h-12 shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+                  >
+                    Start Listening
+                  </Button>
+                </DialogFooter>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -1,24 +1,32 @@
-# Implementation Plan - Lazy Loading for Comic Audio
+# Sequential Data Loading Optimization Plan
 
-To improve portal loading speed, we will defer the fetching of comic audio URLs from the initial database load to an on-demand basis when a specific comic is selected.
+To improve initial loading speed, we will implement a sequential fetching strategy that prioritizes albums, then comics, and lazy-loads audio on demand.
 
-## 1. Type Definitions
-- Modify `src/types.ts` to make `audioUrl` optional in the `Comic` interface.
+## 1. State Management Changes (src/App.tsx)
+- Add `isComicsLoading` state to track the status of comic metadata fetching separately.
+- Modify the `fetchData` effect to execute sequentially:
+    - **Step 1: Albums First** - Fetch albums and invitations.
+    - **Step 2: Profiles** - Fetch owner profiles for the albums.
+    - **Step 3: Render Catalog** - Set albums state and set `isLoading` to false (this hides the splash screen immediately after albums are ready).
+    - **Step 4: Comics Metadata** - Fetch comic titles and covers (excluding audio URLs) in the background.
+    - **Step 5: Finalize Load** - Set comics state and set `isComicsLoading` to false.
 
-## 2. Main Application Logic (`src/App.tsx`)
-- **Initial Fetch**: Update the `fetchData` function to select all comic fields EXCEPT `audio_url`. This reduces the initial payload size and avoids any potential browser pre-fetching of many audio resources.
-- **On-Demand Fetching**: 
-    - Implement `fetchComicAudio` function to retrieve the `audio_url` for a specific comic from Supabase.
-    - Update `handleComicSelect` to be asynchronous. If the selected comic's `audioUrl` is missing, fetch it and update the local `comics` state.
-- **State Management**: The `currentComic` useMemo will automatically reflect the updated `audioUrl` once it's fetched and stored in the `comics` state.
+## 2. Component Enhancements
+### src/components/ComicSidebar.tsx
+- Update the component to accept an `isLoading` prop.
+- Implement a loading skeleton or indicator that appears when comics are still being fetched, ensuring the UI doesn't look broken if the user navigates to the player view quickly.
 
-## 3. UI Components
-- **AudioPlayer (`src/components/AudioPlayer.tsx`)**:
-    - Add a loading state to handle the transition while the audio URL is being fetched.
-    - Display a loading indicator (e.g., a spinner or "Loading audio...") when `currentComic.audioUrl` is not yet available.
-    - Ensure the `<audio>` element handles the new source correctly once it arrives.
-- **AdminPanel (`src/components/AdminPanel.tsx`)**:
-    - Ensure that when a comic is opened for editing, its `audioUrl` is fetched if missing, so the admin can see/modify the existing audio source.
+### src/components/AudioPlayer.tsx
+- Ensure the "Preparing Audio..." state is properly displayed when a comic is selected but its `audioUrl` is still being fetched.
+- Verify that the `audio` tag correctly handles `preload="none"` to prevent premature data consumption.
 
-## 4. Optimization
-- Add `preload="none"` to the `<audio>` tags in `AudioPlayer.tsx` to further prevent unnecessary network activity until the user interacts with the player.
+## 3. Sequential Logic Flow
+- **On App Mount**: Splash screen active.
+- **Albums Loaded**: Splash screen disappears, user sees the Album Catalog.
+- **Comics Fetching**: In the background, comic metadata is loaded.
+- **On Comic Select**: Specific `audio_url` is fetched and played.
+
+## 4. Verification
+- Verify that the splash screen disappears faster (since it only waits for albums).
+- Verify that the comic list in the sidebar shows a loading state if the player view is opened before they are ready.
+- Verify that audio only starts downloading when a play action or selection occurs.

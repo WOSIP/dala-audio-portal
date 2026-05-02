@@ -60,10 +60,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button 
               onClick={onLogoClick}
               className="flex items-center justify-center gap-2 p-2 sm:px-4 sm:py-2 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-lg sm:rounded-xl transition-all border border-white/5"
-              title="Explore Catalog"
+              title="Imagine Catalog"
             >
               <LayoutGrid className="w-4 h-4" />
-              <span className="hidden md:inline text-[10px] font-black uppercase tracking-widest">Explore Catalog</span>
+              <span className="hidden md:inline text-[10px] font-black uppercase tracking-widest">Imagine Catalog</span>
             </button>
           )}
           
