@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Comic, Album, AppRole, UserManagementRecord, InvitedAccess } from "../types";
 import { supabase, updateUserStatus, updateUserProfile, createUserByEmail, updateUserPassword, uploadFile } from "../lib/supabase";
+import { fetchUserRole as getRole, fetchAllUsers as getUsers, fetchComicAudio } from "../data";
 import { 
   Lock, 
   PlusCircle,
@@ -13,7 +14,7 @@ import {
   CheckCircle2,
   XCircle,
   FileAudio,
-  Image as ImageIcon,
+  ImageIcon,
   ArrowUp,
   ArrowDown,
   Link2,
@@ -186,10 +187,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   useEffect(() => {
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setIsAuthenticated(true);
-        fetchUserRole(session.user.id);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setIsAuthenticated(true);
+          fetchUserRole(session.user.id);
+        }
+      } catch (err) {
+        console.error("Session check failed:", err);
       }
     };
     checkSession();
@@ -208,43 +213,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   }, []);
 
   const fetchUserRole = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .single();
-
-    if (error) {
-      console.error("Error fetching role:", error);
-      return;
-    }
-    setUserRole(data.role as AppRole);
+    const role = await getRole(userId);
+    if (role) setUserRole(role);
   };
 
   const fetchAllUsers = async () => {
     if (userRole !== 'admin' && userRole !== 'superadmin') return;
     
     setIsLoadingUsers(true);
-    const { data, error } = await supabase
-      .from('user_permissions')
-      .select('*');
-
-    if (error) {
+    try {
+      const users = await getUsers();
+      setAllUsers(users);
+    } catch (error) {
       toast.error("Failed to fetch users");
       console.error(error);
-    } else {
-      const mappedUsers: UserManagementRecord[] = (data || []).map((item: any) => ({
-        id: item.user_id || item.profile_id || item.id,
-        userId: item.user_id,
-        role: item.role,
-        email: item.email || 'No email found',
-        name: item.name || item.full_name || '',
-        isEnabled: item.is_enabled ?? true,
-        createdAt: item.created_at || new Date().toISOString()
-      }));
-      setAllUsers(mappedUsers);
+    } finally {
+      setIsLoadingUsers(false);
     }
-    setIsLoadingUsers(false);
   };
 
   const handleUpdateRole = async (userId: string, newRole: AppRole) => {
@@ -351,19 +336,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const openEditComicModal = async (comic: Comic) => {
     setEditingComicId(comic.id);
     
-    // Optimized: If audioUrl is missing (lazy loaded), fetch it now for the admin
+    // Optimized: Use helper for lazy loading audio
     let fullAudioUrl = comic.audioUrl;
     if (!fullAudioUrl) {
       try {
         setIsFetchingEditAudio(true);
-        const { data, error } = await supabase
-          .from('comics')
-          .select('audio_url')
-          .eq('id', comic.id)
-          .single();
-        if (!error && data) {
-          fullAudioUrl = data.audio_url;
-        }
+        const url = await fetchComicAudio(comic.id);
+        if (url) fullAudioUrl = url;
       } catch (err) {
         console.error("Failed to fetch audio for edit:", err);
       } finally {
@@ -439,7 +418,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!files || files.length === 0) return;
 
     const file = files[0];
-    const fileName = `${Date.now()}_${file.name.replace(/\\s+/g, '_')}`;
+    const fileName = `${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
 
     try {
       if (type === 'edit-comic-cover') {
@@ -518,7 +497,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setIsUploadingEditCover(false);
       setIsUploadingEditAudio(false);
       setIsUploadingEditSoundtrack(false);
-      e.target.value = "";
+      if (e.target) e.target.value = "";
     }
   };
 
@@ -772,7 +751,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             {albums.map((album) => (
                               <div key={album.id} className={cn("flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white/5 border border-white/10", !album.isEnabled && "opacity-60 grayscale")}>
                                 <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl overflow-hidden shrink-0 border border-white/10"><img src={album.coverUrl} className="w-full h-full object-cover" alt="" /></div>
-                                <div className="flex-1 min-w-0"><h4 className="text-sm sm:text-base font-bold text-white truncate">{album.title}</h4><p className="text-[9px] sm:text-[10px] text-slate-500 uppercase">{album.privacy} \u2022 {comics.filter(c => c.albumId === album.id && !c.deleted).length} Ep</p></div>
+                                <div className="flex-1 min-w-0"><h4 className="text-sm sm:text-base font-bold text-white truncate">{album.title}</h4><p className="text-[9px] sm:text-[10px] text-slate-500 uppercase">{album.privacy} • {comics.filter(c => c.albumId === album.id && !c.deleted).length} Ep</p></div>
                                 <div className="flex items-center gap-1 sm:gap-2">
                                   <Button variant="ghost" size="icon" onClick={() => setEditingAlbumId(album.id)} className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl text-amber-500 hover:bg-amber-500/10"><Edit className="w-4 h-4 sm:w-5 sm:h-5" /></Button>
                                   <Button variant="ghost" size="icon" onClick={() => onToggleAlbumEnable(album.id)} className={cn("h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl", album.isEnabled ? "text-emerald-500" : "text-slate-500")}>{album.isEnabled ? <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" /> : <XCircle className="w-4 h-4 sm:w-5 sm:h-5" />}</Button>
@@ -793,31 +772,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <input type="file" ref={editAlbumCoverInputRef} className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'edit-album-cover')} />
                               </div>
                               <div className="flex-1 w-full space-y-3 sm:space-y-4">
-                                 <div className="space-y-1 sm:space-y-2"><Label className="text-[10px] font-bold text-slate-500 uppercase">Album Title</Label><Input value={currentEditingAlbum?.title} onChange={(e) => onUpdateAlbum(editingAlbumId, { title: e.target.value })} className="h-10 sm:h-11 bg-white/5 border-white/10 text-white font-bold text-sm" /></div>
+                                 <div className="space-y-1 sm:space-y-2"><Label className="text-[10px] font-bold text-slate-500 uppercase">Album Title</Label><Input value={currentEditingAlbum?.title} onChange={(e) => onUpdateAlbum(editingAlbumId!, { title: e.target.value })} className="h-10 sm:h-11 bg-white/5 border-white/10 text-white font-bold text-sm" /></div>
                                  <div className="flex gap-3 sm:gap-4">
                                     <div className="flex-1 space-y-1 sm:space-y-2"><Label className="text-[10px] font-bold text-slate-500 uppercase">Privacy</Label>
-                                      <Select value={currentEditingAlbum?.privacy} onValueChange={(val: 'public' | 'private') => onUpdateAlbum(editingAlbumId, { privacy: val })}><SelectTrigger className="h-10 sm:h-11 bg-white/5 border-white/10 text-white text-xs sm:text-sm"><SelectValue /></SelectTrigger><SelectContent className="bg-[#121214] border-white/10 text-white"><SelectItem value="public">Public</SelectItem><SelectItem value="private">Private</SelectItem></SelectContent></Select>
+                                      <Select value={currentEditingAlbum?.privacy} onValueChange={(val: 'public' | 'private') => onUpdateAlbum(editingAlbumId!, { privacy: val })}>
+                                        <SelectTrigger className="h-10 sm:h-11 bg-white/5 border-white/10 text-white text-xs sm:text-sm">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-[#121214] border-white/10 text-white">
+                                          <SelectItem value="public">Public</SelectItem>
+                                          <SelectItem value="private">Private</SelectItem>
+                                        </SelectContent>
+                                      </Select>
                                     </div>
-                                    <div className="flex items-center gap-2 sm:gap-3 pt-6"><Switch checked={currentEditingAlbum?.isEnabled} onCheckedChange={(checked) => onUpdateAlbum(editingAlbumId, { isEnabled: checked })} /><span className="text-[10px] sm:text-xs font-bold text-white">Enabled</span></div>
+                                    <div className="flex items-center gap-2 sm:gap-3 pt-6"><Switch checked={currentEditingAlbum?.isEnabled} onCheckedChange={(checked) => onUpdateAlbum(editingAlbumId!, { isEnabled: checked })} /><span className="text-[10px] sm:text-xs font-bold text-white">Enabled</span></div>
                                  </div>
                               </div>
                            </div>
 
                            <div className="space-y-2">
-                              <Label className="text-[10px] font-bold text-slate-500 uppercase flex justify-between">Ambient Soundtrack {currentEditingAlbum?.soundtrackUrl && <div className="flex items-center gap-2"><span className="text-violet-500 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Ready</span><Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); onUpdateAlbum(editingAlbumId, { soundtrackUrl: "" }); }} className="h-6 w-6 text-rose-500"><X className="w-3 h-3" /></Button></div>}</Label>
+                              <Label className="text-[10px] font-bold text-slate-500 uppercase flex justify-between">Ambient Soundtrack {currentEditingAlbum?.soundtrackUrl && <div className="flex items-center gap-2"><span className="text-violet-500 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Ready</span><Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); onUpdateAlbum(editingAlbumId!, { soundtrackUrl: "" }); }} className="h-6 w-6 text-rose-500"><X className="w-3 h-3" /></Button></div>}</Label>
                               <div onClick={() => !isUploadingEditSoundtrack && editAlbumSoundtrackInputRef.current?.click()} className={cn("relative h-20 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 cursor-pointer transition-all", currentEditingAlbum?.soundtrackUrl ? "border-violet-500/50 bg-violet-500/5" : "border-white/10 hover:border-violet-500/50 bg-white/5", isUploadingEditSoundtrack && "opacity-50 cursor-wait")}>
                                  {isUploadingEditSoundtrack ? (<Loader2 className="w-6 h-6 text-violet-500 animate-spin" />) : currentEditingAlbum?.soundtrackUrl ? (<div className="flex flex-col items-center"><Music2 className="w-5 h-5 text-violet-500" /><span className="text-[9px] font-bold text-violet-500">Soundtrack Uploaded</span><span className="text-[8px] text-slate-500">Click to replace</span></div>) : (<div className="flex flex-col items-center"><Music2 className="w-5 h-5 text-slate-500" /><span className="text-[9px] font-medium text-slate-500">Upload Soundtrack</span></div>)}
                                  <input type="file" ref={editAlbumSoundtrackInputRef} className="hidden" accept="audio/*" onChange={(e) => handleFileUpload(e, 'edit-album-soundtrack')} disabled={isUploadingEditSoundtrack} />
                               </div>
                            </div>
 
-                           <div className="space-y-1 sm:space-y-2"><Label className="text-[10px] font-bold text-slate-500 uppercase">Description</Label><Textarea value={currentEditingAlbum?.description} onChange={(e) => onUpdateAlbum(editingAlbumId, { description: e.target.value })} className="bg-white/5 border-white/10 text-white min-h-[60px] sm:min-h-[80px] text-sm" placeholder="Describe this collection..." /></div>
+                           <div className="space-y-1 sm:space-y-2"><Label className="text-[10px] font-bold text-slate-500 uppercase">Description</Label><Textarea value={currentEditingAlbum?.description} onChange={(e) => onUpdateAlbum(editingAlbumId!, { description: e.target.value })} className="bg-white/5 border-white/10 text-white min-h-[60px] sm:min-h-[80px] text-sm" placeholder="Describe this collection..." /></div>
                            {currentEditingAlbum?.privacy === 'private' && (
                              <div className="space-y-4 pt-4 border-t border-white/5">
                                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"><h4 className="text-xs sm:text-sm font-bold text-amber-500 uppercase tracking-widest">Invited User Access</h4><div className="flex gap-2 w-full sm:w-64"><Input placeholder="Add email..." value={newInvitedEmail} onChange={(e) => setNewInvitedEmail(e.target.value)} className="h-9 text-xs bg-white/5 border-white/10" /><Button size="sm" onClick={handleAddInvitedEmail} className="bg-amber-500 text-black hover:bg-amber-400 h-9"><UserPlus className="w-4 h-4" /></Button></div></div>
                                 <div className="grid gap-2">
                                    {currentEditingAlbum.invitedAccess.map((access) => (
-                                     <div key={access.email} className="flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-white/5 border border-white/10"><div className="flex items-center gap-2 sm:gap-3"><Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500" /><span className="text-xs sm:text-sm text-white">{access.email}</span></div><div className="flex items-center gap-2 sm:gap-3"><Switch checked={access.enabled} onCheckedChange={() => handleToggleUserAccess(access.email)} className="scale-75 sm:scale-100" /><Button variant="ghost" size="icon" onClick={() => handleRemoveUserAccess(access.email)} className="h-7 w-7 sm:h-8 sm:w-8 text-rose-500"><X className="w-3.5 h-3.5 sm:w-4 sm:h-4" /></Button></div></div>
+                                     <div key={access.email} className="flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-white/5 border border-white/10"><div className="flex items-center gap-2 sm:gap-3"><Mail className="w-3.5 h-3.5 sm:w-4 h-4 text-slate-500" /><span className="text-xs sm:text-sm text-white">{access.email}</span></div><div className="flex items-center gap-2 sm:gap-3"><Switch checked={access.enabled} onCheckedChange={() => handleToggleUserAccess(access.email)} className="scale-75 sm:scale-100" /><Button variant="ghost" size="icon" onClick={() => handleRemoveUserAccess(access.email)} className="h-7 w-7 sm:h-8 sm:w-8 text-rose-500"><X className="w-3.5 h-3.5 sm:w-4 h-4" /></Button></div></div>
                                    ))}
                                    {currentEditingAlbum.invitedAccess.length === 0 && (<p className="text-center py-4 text-[10px] sm:text-xs text-slate-500 italic">No users invited yet.</p>)}
                                 </div>
@@ -831,7 +818,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                       <img src={comic.coverUrl} className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg object-cover" alt="" />
                                       <div className="flex-1 min-w-0"><p className="text-xs sm:text-sm font-bold text-white truncate">{comic.title}</p><p className="text-[9px] sm:text-[10px] text-slate-500">{new Date(comic.createdAt).toLocaleDateString()}</p></div>
                                       <div className={cn("px-1.5 py-0.5 rounded text-[8px] sm:text-[10px] font-bold", comic.enabled ? "bg-emerald-500/10 text-emerald-500" : "bg-slate-500/10 text-slate-500")}>{comic.enabled ? "LIVE" : "HIDDEN"}</div>
-                                      <Button variant="ghost" size="icon" onClick={() => openEditComicModal(comic)} className="h-7 w-7 sm:h-8 sm:w-8 text-amber-500"><Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" /></Button>
+                                      <Button variant="ghost" size="icon" onClick={() => openEditComicModal(comic)} className="h-7 w-7 sm:h-8 sm:w-8 text-amber-500"><Edit className="w-3.5 h-3.5 sm:w-4 h-4" /></Button>
                                    </div>
                                  ))}
                                  {comics.filter(c => c.albumId === editingAlbumId && !c.deleted).length === 0 && (<p className="text-center py-4 text-[10px] sm:text-xs text-slate-500 italic">This album is empty.</p>)}
@@ -850,8 +837,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       visibleComics.map((comic, index) => (
                         <div key={comic.id} className={cn("flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white/5 border border-white/10 transition-all", !comic.enabled && "opacity-60 grayscale")}>
                           <div className="flex flex-col gap-1 mr-0.5 sm:mr-1 shrink-0">
-                             <Button variant="ghost" size="icon" onClick={() => onReorderComic(comic.id, 'up')} disabled={index === 0} className="h-5 w-5 sm:h-6 sm:w-6 text-slate-500 hover:text-amber-500 disabled:opacity-20"><ChevronUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" /></Button>
-                             <Button variant="ghost" size="icon" onClick={() => onReorderComic(comic.id, 'down')} disabled={index === visibleComics.length - 1} className="h-5 w-5 sm:h-6 sm:w-6 text-slate-500 hover:text-amber-500 disabled:opacity-20"><ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" /></Button>
+                             <Button variant="ghost" size="icon" onClick={() => onReorderComic(comic.id, 'up')} disabled={index === 0} className="h-5 w-5 sm:h-6 sm:w-6 text-slate-500 hover:text-amber-500 disabled:opacity-20"><ChevronUp className="w-3.5 h-3.5 sm:w-4 h-4" /></Button>
+                             <Button variant="ghost" size="icon" onClick={() => onReorderComic(comic.id, 'down')} disabled={index === visibleComics.length - 1} className="h-5 w-5 sm:h-6 sm:w-6 text-slate-500 hover:text-amber-500 disabled:opacity-20"><ChevronDown className="w-3.5 h-3.5 sm:w-4 h-4" /></Button>
                           </div>
                           <div className="relative shrink-0 w-12 h-12 sm:w-16 sm:h-16 rounded-lg sm:rounded-xl overflow-hidden border border-white/10"><img src={comic.coverUrl} className="w-full h-full object-cover" alt="" /></div>
                           <div className="flex-1 min-w-0">
@@ -922,7 +909,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <div className="flex items-center gap-3"><Avatar className="w-8 h-8 sm:w-10 sm:h-10 border border-white/10"><AvatarImage src={u.avatarUrl} /><AvatarFallback className="bg-slate-800 text-slate-400 font-bold text-xs">{u.name?.[0]?.toUpperCase() || u.email[0].toUpperCase()}</AvatarFallback></Avatar><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><p className="text-xs sm:text-sm font-bold text-white truncate">{u.name || "Unnamed User"}</p>{!u.isEnabled && (<span className="text-[7px] sm:text-[8px] bg-rose-500/20 text-rose-500 px-1.5 py-0.5 rounded font-bold uppercase shrink-0">Disabled</span>)}</div><p className="text-[10px] sm:text-xs text-slate-400 truncate">{u.email}</p></div></div>
                           <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 border-t sm:border-t-0 border-white/5 pt-2 sm:pt-0">
                             <div className="flex items-center gap-2"><Label className="text-[9px] text-slate-500 uppercase shrink-0">Role</Label><Select value={u.role} onValueChange={(val: AppRole) => handleUpdateRole(u.id, val)}><SelectTrigger className="w-24 sm:w-28 h-8 sm:h-9 bg-white/5 border-white/10 text-white text-[10px] sm:text-xs"><SelectValue /></SelectTrigger><SelectContent className="bg-[#121214] border-white/10 text-white"><SelectItem value="admin">Admin</SelectItem><SelectItem value="editor">Editor</SelectItem><SelectItem value="viewer">Viewer</SelectItem></SelectContent></Select></div>
-                            <div className="flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4"><div className="flex items-center gap-2"><Switch checked={u.isEnabled} onCheckedChange={() => handleToggleUserEnabled(u.id, u.isEnabled)} className="scale-75 sm:scale-90" /></div><Button variant="ghost" size="icon" onClick={() => openEditModal(u)} className="h-8 w-8 sm:h-9 sm:w-9 text-slate-500 hover:text-white"><Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4" /></Button></div>
+                            <div className="flex items-center gap-2 sm:gap-3 border-l border-white/10 pl-3 sm:pl-4"><div className="flex items-center gap-2"><Switch checked={u.isEnabled} onCheckedChange={() => handleToggleUserEnabled(u.id, u.isEnabled)} className="scale-75 sm:scale-90" /></div><Button variant="ghost" size="icon" onClick={() => openEditModal(u)} className="h-8 w-8 sm:h-9 sm:w-9 text-slate-500 hover:text-white"><Edit className="w-3.5 h-3.5 sm:w-4 h-4" /></Button></div>
                           </div>
                         </div>
                       ))}
@@ -937,8 +924,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <form onSubmit={handleUpdateUser} className="space-y-4 pt-2 sm:pt-4">
                           <div className="space-y-1 sm:space-y-2 opacity-50"><Label className="text-[10px] text-slate-500 uppercase">Email (Fixed)</Label><Input value={editingUser.email} disabled className="h-10 bg-white/5 border-white/10 text-sm" /></div>
                           <div className="space-y-1 sm:space-y-2"><Label className="text-[10px] text-slate-500 uppercase">Full Name</Label><Input placeholder="John Doe" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="h-10 bg-white/5 border-white/10 text-sm" /></div>
-                          <div className="space-y-1 sm:space-y-2"><Label className="text-[10px] text-slate-500 uppercase">Role</Label><Select value={newUserRole} onValueChange={(val: AppRole) => setNewUserRole(val)}><SelectTrigger className="h-10 bg-white/5 border-white/10 text-sm"><SelectValue /></SelectTrigger><SelectContent className="bg-[#121214] border-white/10 text-white"><SelectItem value="admin">Admin</SelectItem><SelectItem value="editor">Editor</SelectItem><SelectItem value="viewer">Viewer</SelectItem></SelectContent></Select>
-                        </div>
+                          <div className="space-y-1 sm:space-y-2"><Label className="text-[10px] text-slate-500 uppercase">Role</Label><Select value={newUserRole} onValueChange={(val: AppRole) => setNewUserRole(val)}><SelectTrigger className="h-10 bg-white/5 border-white/10 text-sm"><SelectValue /></SelectTrigger><SelectContent className="bg-[#121214] border-white/10 text-white"><SelectItem value="admin">Admin</SelectItem><SelectItem value="editor">Editor</SelectItem><SelectItem value="viewer">Viewer</SelectItem></SelectContent></Select></div>
                           <div className="pt-3 sm:pt-4 border-t border-white/5 space-y-3 sm:space-y-4">
                              <div className="flex items-center gap-2 text-amber-500"><Key className="w-3.5 h-3.5" /><span className="text-[10px] font-bold uppercase tracking-widest">Change Password</span></div>
                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">

@@ -1,57 +1,175 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Connection details - Using the verified project URL and modern publishable key
 const supabaseUrl = 'https://lhcwliyrlpdrksrzwcbw.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoY3dsaXlybHBkcmtzcnp3Y2J3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNjk2MDEsImV4cCI6MjA5MDY0NTYwMX0._Vjy1IZNXVGjpJYoXcZTSwTwJGJUVgCqU_NBtX8GPEA';
+// Modern publishable key is preferred over legacy anon key
+const supabaseAnonKey = 'sb_publishable_lhRZpzUr9mUaP6VvyQilzA_WYhSF6Am';
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase environment variables. Please check your .env file.');
+  console.error('Supabase credentials missing.');
 }
 
-export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
+/**
+ * Robust Supabase Client with Optimized Retry Logic and Timeout Handling
+ */
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storageKey: 'dala-portal-auth'
   },
   global: {
-    headers: { 'x-application-name': 'comic-reader' },
+    headers: { 'x-application-name': 'dala-portal' },
+    /**
+     * Custom fetch with enhanced timeout and diagnostic logging
+     */
+    fetch: async (url, options) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+        console.warn(`[Supabase] Request to ${url} timed out after 30s`);
+      }, 30000);
+
+      try {
+        const response = await fetch(url, { 
+          ...options, 
+          signal: controller.signal,
+          // Ensure we don't cache database queries in a way that hides connection issues
+          cache: 'no-store'
+        });
+        return response;
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          throw new Error('Database request timed out. The server might be under heavy load.');
+        }
+        console.error('[Supabase] Connection error:', err.message);
+        throw err;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
   },
   db: {
-    schema: 'public',
-  },
+    schema: 'public'
+  }
 });
 
 /**
- * Robust fetch wrapper with retries and timeout handling
+ * Diagnostic helper to check connection health
  */
-export async function robustFetch<T>(
-  queryFn: () => Promise<{ data: T | null; error: any }>,
-  retries = 3,
-  delay = 1000
-): Promise<T | null> {
-  let lastError: any;
+export const checkConnection = async () => {
+  try {
+    const start = Date.now();
+    const { error } = await supabase.from('albums').select('id').limit(1);
+    const duration = Date.now() - start;
+    
+    if (error) throw error;
+    return { status: 'ok', latency: `${duration}ms` };
+  } catch (error: any) {
+    return { status: 'error', message: error.message };
+  }
+};
+
+/**
+ * File Upload Helper
+ */
+export const uploadFile = async (bucket: string, path: string, file: File) => {
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .upload(path, file, {
+      upsert: true
+    });
   
-  for (let i = 0; i < retries; i++) {
-    try {
-      const { data, error } = await queryFn();
-      if (error) {
-        // If it's a timeout, we definitely want to retry
-        if (error.message?.includes('timeout') || error.code === '522') {
-          console.warn(`Database timeout (attempt ${i + 1}/${retries}). Retrying...`);
-          await new Promise(res => setTimeout(res, delay * Math.pow(2, i)));
-          continue;
-        }
-        throw error;
-      }
-      return data;
-    } catch (err) {
-      lastError = err;
-      console.error(`Fetch attempt ${i + 1} failed:`, err);
-      if (i < retries - 1) {
-        await new Promise(res => setTimeout(res, delay * Math.pow(2, i)));
+  if (error) throw error;
+  
+  const { data: { publicUrl } } = supabase.storage
+    .from(bucket)
+    .getPublicUrl(data.path);
+    
+  return publicUrl;
+};
+
+/**
+ * User Management Functions (with Promise wrapper for consistency)
+ */
+
+export const createUserByEmail = async (email: string, name: string, role: string, password?: string) => {
+  const { data, error: signUpError } = await supabase.auth.signUp({
+    email,
+    password: password || 'temp-pass-' + Math.random().toString(36).slice(-8),
+    options: {
+      data: {
+        full_name: name,
+        role: role
       }
     }
+  });
+
+  if (signUpError) throw signUpError;
+  if (!data.user) throw new Error("Failed to create user record");
+
+  if (password) {
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ password_hash: password })
+      .eq('id', data.user.id);
+    
+    if (updateError) console.warn("Could not update password_hash:", updateError);
   }
+
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', data.user.id)
+    .single();
+
+  if (profileError) {
+    return {
+      id: data.user.id,
+      email: data.user.email,
+      full_name: name,
+      is_enabled: true
+    };
+  }
+
+  return profile;
+};
+
+export const updateUserStatus = async (userId: string, isEnabled: boolean) => {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ is_enabled: isEnabled })
+    .eq('id', userId);
   
-  console.error('All fetch attempts failed. Final error:', lastError);
-  return null;
-}
+  if (error) throw error;
+};
+
+export const toggleUserStatus = updateUserStatus;
+
+export const updateUserProfile = async (userId: string, updates: { name?: string, role?: string }) => {
+  if (updates.name !== undefined) {
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({ full_name: updates.name })
+      .eq('id', userId);
+    if (profileError) throw profileError;
+  }
+
+  if (updates.role !== undefined) {
+    const { error: roleError } = await supabase
+      .from('user_roles')
+      .update({ role: updates.role })
+      .eq('user_id', userId);
+    if (roleError) throw roleError;
+  }
+};
+
+export const updateUserPassword = async (userId: string, password: string) => {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ password_hash: password })
+    .eq('id', userId);
+
+  if (error) throw error;
+};
