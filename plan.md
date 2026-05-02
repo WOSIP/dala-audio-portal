@@ -1,26 +1,24 @@
-Plan: Implement modification of comic soundtracks.
+# Implementation Plan - Lazy Loading for Comic Audio
 
-**Schema Changes:**
-1.  **Database:** Add a new column `soundtrack_url` (type: TEXT, nullable) to the `comics` table.
-2.  **Storage:** Create a new Supabase Storage bucket named `comic_soundtracks`.
+To improve portal loading speed, we will defer the fetching of comic audio URLs from the initial database load to an on-demand basis when a specific comic is selected.
 
-**Agent Assignments:**
+## 1. Type Definitions
+- Modify `src/types.ts` to make `audioUrl` optional in the `Comic` interface.
 
-**1. Supabase Engineer:**
-    *   Execute Supabase database migration to add the `soundtrack_url` column to the `comics` table.
-    *   Configure the `comic_soundtracks` storage bucket with appropriate policies (e.g., authenticated users can upload/update).
-    *   Implement backend logic in `src/lib/supabase.ts` for:
-        *   Uploading soundtrack files to the `comic_soundtracks` bucket.
-        *   Updating the `comics.soundtrack_url` with the uploaded file's URL.
-        *   Handling file deletion or replacement.
+## 2. Main Application Logic (`src/App.tsx`)
+- **Initial Fetch**: Update the `fetchData` function to select all comic fields EXCEPT `audio_url`. This reduces the initial payload size and avoids any potential browser pre-fetching of many audio resources.
+- **On-Demand Fetching**: 
+    - Implement `fetchComicAudio` function to retrieve the `audio_url` for a specific comic from Supabase.
+    - Update `handleComicSelect` to be asynchronous. If the selected comic's `audioUrl` is missing, fetch it and update the local `comics` state.
+- **State Management**: The `currentComic` useMemo will automatically reflect the updated `audioUrl` once it's fetched and stored in the `comics` state.
 
-**2. Frontend Engineer:**
-    *   Modify `src/components/AdminPanel.tsx` (or a related component) to include a UI element for:
-        *   Selecting and uploading soundtrack files for a specific comic.
-        *   Displaying the current soundtrack if available.
-        *   Triggering the backend upload/update function.
-    *   Ensure the UI integrates seamlessly with the existing admin panel features.
+## 3. UI Components
+- **AudioPlayer (`src/components/AudioPlayer.tsx`)**:
+    - Add a loading state to handle the transition while the audio URL is being fetched.
+    - Display a loading indicator (e.g., a spinner or "Loading audio...") when `currentComic.audioUrl` is not yet available.
+    - Ensure the `<audio>` element handles the new source correctly once it arrives.
+- **AdminPanel (`src/components/AdminPanel.tsx`)**:
+    - Ensure that when a comic is opened for editing, its `audioUrl` is fetched if missing, so the admin can see/modify the existing audio source.
 
-**Notes:**
-- Ensure existing comic cover image modification, audio playback, and access policies remain unaffected.
-- All changes must be backward compatible.
+## 4. Optimization
+- Add `preload="none"` to the `<audio>` tags in `AudioPlayer.tsx` to further prevent unnecessary network activity until the user interacts with the player.

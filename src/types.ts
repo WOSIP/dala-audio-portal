@@ -13,6 +13,7 @@ export interface Album {
   title: string;
   description?: string;
   coverUrl: string;
+  soundtrackUrl?: string;
   createdAt: string;
   privacy: 'public' | 'private';
   invitedAccess: InvitedAccess[];
@@ -23,8 +24,7 @@ export interface Album {
 export interface Comic {
   id: string;
   title: string;
-  audioUrl: string;
-  soundtrackUrl?: string;
+  audioUrl?: string;
   coverUrl: string;
   illustrationUrls: string[];
   notes?: string;

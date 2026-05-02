@@ -127,6 +127,7 @@ export const updateAlbum = async (id: string, updates: any) => {
   if (updates.title !== undefined) dbUpdates.title = updates.title;
   if (updates.description !== undefined) dbUpdates.description = updates.description;
   if (updates.coverUrl !== undefined) dbUpdates.cover_url = updates.coverUrl;
+  if (updates.soundtrackUrl !== undefined) dbUpdates.soundtrack_url = updates.soundtrackUrl;
   if (updates.privacy !== undefined) dbUpdates.privacy = updates.privacy;
   if (updates.isEnabled !== undefined) dbUpdates.is_enabled = updates.isEnabled;
 
@@ -169,7 +170,6 @@ export const updateComic = async (id: string, updates: any) => {
   const dbUpdates: any = {};
   if (updates.title !== undefined) dbUpdates.title = updates.title;
   if (updates.audioUrl !== undefined) dbUpdates.audio_url = updates.audioUrl;
-  if (updates.soundtrackUrl !== undefined) dbUpdates.soundtrack_url = updates.soundtrackUrl;
   if (updates.coverUrl !== undefined) dbUpdates.cover_url = updates.coverUrl;
   if (updates.illustrationUrls !== undefined) dbUpdates.illustration_urls = updates.illustrationUrls;
   if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
