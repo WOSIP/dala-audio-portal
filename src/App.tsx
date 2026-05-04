@@ -17,10 +17,22 @@ function App() {
   const [comics, setComics] = useState<Comic[]>([]);
   const [userEmail, setUserEmail] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isComicsLoading, setIsComicsLoading] = useState(false);
   const [isAudioFetching, setIsAudioFetching] = useState(false);
   const [view, setView] = useState<'catalog' | 'player'>('catalog');
   const [isFirstLoad, setIsFirstLoad] = useState(true);
   const [loadingSeconds, setLoadingSeconds] = useState(0);
+
+  // Timer for splash screen
+  useEffect(() => {
+    let interval: any;
+    if (isLoading) {
+      interval = setInterval(() => {
+        setLoadingSeconds(prev => prev + 0.1);
+      }, 100);
+    }
+    return () => clearInterval(interval);
+  }, [isLoading]);
 
   // Disable swipe-to-refresh during loading
   useEffect(() => {
@@ -29,43 +41,36 @@ function App() {
     } else {
       document.body.classList.remove('disable-swipe-refresh');
     }
-    return () => {
-      document.body.classList.remove('disable-swipe-refresh');
-    };
   }, [isLoading]);
 
-  // Timer for splash screen
-  useEffect(() => {
-    let interval: any;
-    if (isLoading) {
-      interval = setInterval(() => {
-        setLoadingSeconds(prev => prev + 0.1);
-      }, 1000 / 10);
-    }
-    return () => clearInterval(interval);
-  }, [isLoading]);
-
-  // Fetch initial data from Supabase
+  // Fetch initial data - Sequential loading strategy
   const fetchData = useCallback(async () => {
     try {
-      setIsLoading(true);
+      // Step 1: Load albums first to allow portal entry
+      const albumsData = await fetchAlbums();
+      setAlbums(albumsData || []);
       
-      const [albumsData, comicsData] = await Promise.all([
-        fetchAlbums(),
-        fetchComics()
-      ]);
+      // Release initial loading state once albums are ready
+      // This shows the catalog to the user immediately
+      const minTime = isFirstLoad ? 1200 : 300;
+      setTimeout(() => {
+        setIsLoading(false);
+        if (isFirstLoad) {
+          setTimeout(() => setIsFirstLoad(false), 800);
+        }
+      }, minTime);
 
-      setAlbums(albumsData);
-      setComics(comicsData);
+      // Step 2: Load comic metadata in background
+      setIsComicsLoading(true);
+      const comicsData = await fetchComics();
+      setComics(comicsData || []);
+      setIsComicsLoading(false);
+      
     } catch (error: any) {
       console.error("Error loading data:", error);
-      toast.error("Failed to load content from database.");
-    } finally {
-      const minLoadTime = isFirstLoad ? 1500 : 500;
-      setTimeout(() => {
-         setIsLoading(false);
-         setTimeout(() => setIsFirstLoad(false), 800);
-      }, minLoadTime);
+      toast.error("Failed to connect to database. Please check your connection.");
+      setIsLoading(false);
+      setIsComicsLoading(false);
     }
   }, [isFirstLoad]);
 
@@ -76,7 +81,7 @@ function App() {
   // Handle Admin Operations
   const handleAddComic = async (newComic: Omit<Comic, "id" | "createdAt" | "enabled" | "deleted">) => {
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('comics')
         .insert([{
           album_id: newComic.albumId,
@@ -89,9 +94,7 @@ function App() {
           illustration_import_link: newComic.illustrationImportLink,
           enabled: true,
           deleted: false
-        }])
-        .select()
-        .single();
+        }]);
 
       if (error) throw error;
       
@@ -104,7 +107,6 @@ function App() {
 
   const handleUpdateComic = async (id: string, updates: Partial<Comic>) => {
     try {
-      // Map frontend camelCase to backend snake_case if needed
       const dbUpdates: any = {};
       if (updates.title !== undefined) dbUpdates.title = updates.title;
       if (updates.audioUrl !== undefined) dbUpdates.audio_url = updates.audioUrl;
@@ -159,8 +161,7 @@ function App() {
 
       if (error) throw error;
       
-      // Handle invitations if any
-      if (newAlbum.invitedAccess?.length > 0) {
+      if (newAlbum.invitedAccess && newAlbum.invitedAccess.length > 0) {
         await supabase.from('album_invitations').insert(
           newAlbum.invitedAccess.map(inv => ({
             album_id: data.id,
@@ -201,12 +202,14 @@ function App() {
   };
 
   const accessibleAlbums = useMemo(() => {
+    if (!albums || albums.length === 0) return [];
     return albums.filter(album => {
+      if (!album) return false;
       if (!album.isEnabled) return false;
       if (album.privacy === 'public') return true;
       if (!userEmail) return false;
       return album.invitedAccess?.some(access => 
-        access.email.toLowerCase() === userEmail.toLowerCase() && access.enabled
+        access?.email?.toLowerCase() === userEmail.toLowerCase() && access.enabled
       );
     });
   }, [albums, userEmail]);
@@ -220,6 +223,7 @@ function App() {
   }, [accessibleAlbums, currentAlbumId, view]);
 
   const activeComics = useMemo(() => {
+    if (!comics || !currentAlbumId) return [];
     return comics.filter(c => !c.deleted && c.enabled && c.albumId === currentAlbumId);
   }, [comics, currentAlbumId]);
 
@@ -266,7 +270,9 @@ function App() {
   };
 
   const handleComicSelect = (comic: Comic) => {
+    if (!comic) return;
     setCurrentComicId(comic.id);
+    // Step 3: Lazy load audio ONLY when a specific comic is selected
     if (!comic.audioUrl) {
       loadComicAudio(comic.id);
     }
@@ -339,7 +345,7 @@ function App() {
       />
       
       <main className="flex-1 flex flex-col lg:flex-row-reverse relative">
-        <Suspense fallback={null}>
+        <Suspense fallback={<div className="flex-1 bg-[#0a0a0c]" />}>
           <AnimatePresence mode="wait">
             {view === 'catalog' ? (
               <motion.div
@@ -347,7 +353,7 @@ function App() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="w-full"
+                className="w-full h-full flex flex-col"
               >
                 <AlbumCatalog 
                   albums={accessibleAlbums} 
@@ -372,22 +378,28 @@ function App() {
                   onComicSelect={handleComicSelect}
                   userEmail={userEmail}
                   onSetUserEmail={setUserEmail}
+                  isLoading={isComicsLoading}
                 />
 
                 <div className="flex-1 relative overflow-y-auto p-3 sm:p-6 lg:p-12 bg-[#0a0a0c]">
                   <div className="max-w-4xl mx-auto w-full">
                     {activeComics.length > 0 ? (
                       <AudioPlayer 
-                        currentComic={currentComic} 
+                        currentComic={currentComic!} 
                         onNextComic={handleNextComic}
                         onPreviousComic={handlePreviousComic}
                         author={currentAlbum?.author}
                         soundtrackUrl={currentAlbum?.soundtrackUrl}
                         isFetching={isAudioFetching}
                       />
+                    ) : isComicsLoading ? (
+                       <div className="h-full flex flex-col items-center justify-center text-slate-500 py-20 gap-4">
+                          <Headphones className="w-10 h-10 text-amber-500/20 animate-pulse" />
+                          <p className="text-xs font-black uppercase tracking-widest">Loading Episodes...</p>
+                       </div>
                     ) : (
                       <div className="h-full flex items-center justify-center text-slate-500 py-20">
-                          <p>No episodes found.</p>
+                          <p>No episodes found for this collection.</p>
                       </div>
                     )}
                   </div>

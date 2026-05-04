@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Comic, Album } from "../types";
-import { Play, ListMusic, Layers, Lock, Mail, CheckCircle, LogOut, Music } from "lucide-react";
+import { Play, ListMusic, Layers, Lock, Mail, CheckCircle, LogOut, Music, Loader2 } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -17,6 +17,7 @@ interface ComicSidebarProps {
   onComicSelect: (comic: Comic) => void;
   userEmail: string;
   onSetUserEmail: (email: string) => void;
+  isLoading?: boolean;
 }
 
 const Waveform = ({ isActive }: { isActive: boolean }) => (
@@ -51,7 +52,8 @@ export const ComicSidebar: React.FC<ComicSidebarProps> = ({
   currentComicId, 
   onComicSelect,
   userEmail,
-  onSetUserEmail
+  onSetUserEmail,
+  isLoading = false
 }) => {
   const [emailInput, setEmailInput] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
@@ -219,7 +221,12 @@ export const ComicSidebar: React.FC<ComicSidebarProps> = ({
 
       <ScrollArea className="flex-1 h-full min-h-[300px] lg:min-h-0">
         <div className="px-4 sm:px-6 pb-12 space-y-2 sm:space-y-4 pt-1 sm:pt-4">
-          {comics.length > 0 ? (
+          {isLoading ? (
+            <div className="py-16 text-center space-y-4">
+               <Loader2 className="w-8 h-8 text-amber-500/40 animate-spin mx-auto" />
+               <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest">Loading Episodes...</p>
+            </div>
+          ) : comics.length > 0 ? (
             comics.map((comic) => (
               <motion.button
                 key={comic.id}

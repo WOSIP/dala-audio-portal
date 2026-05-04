@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Comic, Album, AppRole, UserManagementRecord, InvitedAccess } from "../types";
-import { supabase, uploadFile } from "../lib/supabase";
+import { supabase, uploadFile, signInWithRetry } from "../lib/supabase";
 import { fetchUserRole as getRole, fetchAllUsers as getUsers, fetchComicAudio } from "../data";
 import { 
   Lock, 
@@ -186,11 +186,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // Use the new robust sign-in logic with targeted retries
+      const { error } = await signInWithRetry({
         email,
         password,
       });
+      
       if (error) throw error;
+      
       setIsAuthenticated(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -199,7 +202,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       }
       toast.success("Welcome to Creator Studio!");
     } catch (error: any) {
-      toast.error(error.message);
+      // Provide more user-friendly message for network errors
+      const message = error.message?.toLowerCase().includes('fetch') 
+        ? "Connection issue. Please check your internet and try again." 
+        : error.message;
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -320,7 +327,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <div className="space-y-2">
                 <Label className="text-xs font-bold uppercase tracking-widest text-slate-500">Password</Label>
                 <div className="relative">
-                  <Input type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pr-12 h-11 sm:h-12 bg-white/5 border-white/10 rounded-xl text-white focus:ring-amber-500" required />
+                  <Input type={showPassword ? "text" : "password"} placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" value={password} onChange={(e) => setPassword(e.target.value)} className="pr-12 h-11 sm:h-12 bg-white/5 border-white/10 rounded-xl text-white focus:ring-amber-500" required />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-amber-500 transition-colors">
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
