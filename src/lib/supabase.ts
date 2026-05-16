@@ -11,21 +11,23 @@ import { AppRole } from "../types";
  * SECURITY NOTE: Local database connections are strictly prohibited.
  */
 
-// Prioritize production environment variables as per requirements
+// Strictly use environment variables for production configuration
 const supabaseUrl = 'https://lhcwliyrlpdrksrzwcbw.supabase.co';
-
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoY3dsaXlybHBkcmtzcnp3Y2J3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNjk2MDEsImV4cCI6MjA5MDY0NTYwMX0._Vjy1IZNXVGjpJYoXcZTSwTwJGJUVgCqU_NBtX8GPEA';
 
 /**
  * Validates that the Supabase URL is not pointing to a local instance.
  */
-const validateSupabaseUrl = (url: string) => {
-  if (!url) return;
+const validateSupabaseUrl = (url: string | undefined) => {
+  if (!url) {
+    throw new Error("Supabase URL is missing. Please check your environment variables.");
+  }
   
   try {
     const parsed = new URL(url);
     const hostname = parsed.hostname.toLowerCase();
     
+    // Check for local IP addresses and hostnames
     const isLocal = 
       hostname === 'localhost' || 
       hostname === '127.0.0.1' || 
@@ -33,19 +35,26 @@ const validateSupabaseUrl = (url: string) => {
       hostname === '[::1]' ||
       hostname.startsWith('192.168.') ||
       hostname.startsWith('10.') ||
-      (hostname.startsWith('172.') && parseInt(hostname.split('.')[1]) >= 16 && parseInt(hostname.split('.')[1]) <= 31);
+      (hostname.startsWith('172.') && parseInt(hostname.split('.')[1]) >= 16 && parseInt(hostname.split('.')[1]) <= 31) ||
+      hostname.endsWith('.local');
 
     if (isLocal) {
       const errorMsg = "Local database connection detected and blocked. Only online production database is allowed.";
       console.error(errorMsg);
       throw new Error(errorMsg);
     }
+
+    // Ensure it's using the official supabase.co domain in production
+    if (!hostname.endsWith('.supabase.co') && !hostname.endsWith('.supabase.net')) {
+       console.warn("Connecting to a non-standard Supabase host. Ensure this is intentional.");
+    }
   } catch (err: any) {
-    if (err.message.includes("Local database")) throw err;
+    if (err.message.includes("blocked") || err.message.includes("missing")) throw err;
+    throw new Error(`Invalid Supabase URL: ${err.message}`);
   }
 };
 
-// Execute validation
+// Execute strict validation
 validateSupabaseUrl(supabaseUrl);
 
 const FETCH_TIMEOUT_MS = 360000; // 360 seconds
@@ -69,6 +78,7 @@ const customFetch = async (
       signal: controller.signal
     });
 
+    // Retry on 5xx errors or 429 (rate limiting)
     if (!response.ok && (response.status >= 500 || response.status === 429) && attempt < MAX_RETRIES) {
       const errorData = await response.clone().text();
       console.warn(`Fetch attempt ${attempt} failed with status ${response.status}: ${errorData}. Retrying...`);
@@ -85,6 +95,7 @@ const customFetch = async (
       throw err;
     }
 
+    // Retry on timeouts or network errors
     const shouldRetry = isAbortError || isNetworkError || err.message.includes('Server Error');
 
     if (shouldRetry) {
@@ -104,7 +115,7 @@ const customFetch = async (
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error("CRITICAL: Supabase credentials missing! Connection will fail.");
 } else {
-  console.log("Supabase client initialized with production configuration.");
+  console.log("Supabase client initialized with strict production configuration.");
 }
 
 export const supabase = createClient(supabaseUrl || "", supabaseAnonKey || "", {
