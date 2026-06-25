@@ -15,10 +15,6 @@ export async function fetchAlbums(): Promise<Album[]> {
       .from('albums')
       .select(`
         *,
-        profiles:owner_id (
-          full_name,
-          avatar_url
-        ),
         album_invitations (
           email,
           enabled
@@ -46,8 +42,8 @@ export async function fetchAlbums(): Promise<Album[]> {
       privacy: album.privacy,
       isEnabled: album.is_enabled,
       author: {
-        name: album.profiles?.full_name || 'Unknown Author',
-        avatarUrl: album.profiles?.avatar_url
+        name: 'Unknown Author',
+        avatarUrl: null
       },
       invitedAccess: album.album_invitations?.map((inv: any) => ({
         email: inv.email,
@@ -61,8 +57,9 @@ export async function fetchAlbums(): Promise<Album[]> {
 }
 
 /**
- * Fetch all comics (episodes) from Supabase.
- * Optimized: Does not fetch audio_url initially to speed up loading.
+ * Fetch comics (episodes).
+ * Rule 1 Optimization: Can be filtered by albumId.
+ * Rule 2 Optimization: Does not fetch audio_url by default to speed up initial metadata load.
  */
 export async function fetchComics(albumId?: string): Promise<Comic[]> {
   if (!isSupabaseConfigured()) {
@@ -111,6 +108,7 @@ export async function fetchComics(albumId?: string): Promise<Comic[]> {
 
 /**
  * Fetch audio for a specific comic.
+ * Rule 2 Optimization: Audio URL is fetched only when requested for playback.
  */
 export async function fetchComicAudio(comicId: string): Promise<string | null> {
   if (!isSupabaseConfigured()) {

@@ -43,6 +43,21 @@ function App() {
     }
   }, [isLoading]);
 
+  // Rule 1 Optimization: Fetch episodes only for the selected album
+  const fetchCurrentAlbumComics = useCallback(async (albumId: string) => {
+    if (!albumId) return;
+    try {
+      setIsComicsLoading(true);
+      const comicsData = await fetchComics(albumId);
+      setComics(comicsData || []);
+    } catch (error: any) {
+      console.error("Error loading episodes:", error);
+      toast.error("Failed to load episodes.");
+    } finally {
+      setIsComicsLoading(false);
+    }
+  }, []);
+
   // Fetch initial data - Sequential loading strategy
   const fetchData = useCallback(async () => {
     try {
@@ -60,23 +75,27 @@ function App() {
         }
       }, minTime);
 
-      // Step 2: Load comic metadata in background
-      setIsComicsLoading(true);
-      const comicsData = await fetchComics();
-      setComics(comicsData || []);
-      setIsComicsLoading(false);
+      // Step 2: Comic metadata is no longer loaded globally (Optimization Rule 1)
       
     } catch (error: any) {
       console.error("Error loading data:", error);
       toast.error("Failed to connect to database. Please check your connection.");
       setIsLoading(false);
-      setIsComicsLoading(false);
     }
   }, [isFirstLoad]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const [currentAlbumId, setCurrentAlbumId] = useState<string>("");
+
+  // Rule 1 Optimization: Re-fetch comics when current album changes in player view
+  useEffect(() => {
+    if (currentAlbumId && view === 'player') {
+      fetchCurrentAlbumComics(currentAlbumId);
+    }
+  }, [currentAlbumId, view, fetchCurrentAlbumComics]);
 
   // Handle Admin Operations
   const handleAddComic = async (newComic: Omit<Comic, "id" | "createdAt" | "enabled" | "deleted">) => {
@@ -99,7 +118,9 @@ function App() {
       if (error) throw error;
       
       toast.success("Episode published successfully!");
-      fetchData();
+      if (newComic.albumId === currentAlbumId) {
+        fetchCurrentAlbumComics(currentAlbumId);
+      }
     } catch (error: any) {
       toast.error("Failed to publish episode: " + error.message);
     }
@@ -123,7 +144,9 @@ function App() {
 
       if (error) throw error;
       toast.success("Episode updated!");
-      fetchData();
+      if (currentAlbumId) {
+        fetchCurrentAlbumComics(currentAlbumId);
+      }
     } catch (error: any) {
       toast.error("Update failed: " + error.message);
     }
@@ -138,7 +161,9 @@ function App() {
 
       if (error) throw error;
       toast.success("Episode removed.");
-      fetchData();
+      if (currentAlbumId) {
+        fetchCurrentAlbumComics(currentAlbumId);
+      }
     } catch (error: any) {
       toast.error("Removal failed: " + error.message);
     }
@@ -214,8 +239,6 @@ function App() {
     });
   }, [albums, userEmail]);
 
-  const [currentAlbumId, setCurrentAlbumId] = useState<string>("");
-
   useEffect(() => {
     if (!currentAlbumId && accessibleAlbums.length > 0 && view === 'player') {
       setCurrentAlbumId(accessibleAlbums[0].id);
@@ -252,6 +275,7 @@ function App() {
     return activeComics.findIndex(c => c.id === currentComic?.id);
   }, [activeComics, currentComic]);
 
+  // Rule 2 Optimization: Load audio ONLY when an episode is selected
   const loadComicAudio = async (comicId: string) => {
     try {
       setIsAudioFetching(true);
@@ -272,7 +296,7 @@ function App() {
   const handleComicSelect = (comic: Comic) => {
     if (!comic) return;
     setCurrentComicId(comic.id);
-    // Step 3: Lazy load audio ONLY when a specific comic is selected
+    // Rule 2 Optimization: Lazy load audio ONLY when a specific comic is selected
     if (!comic.audioUrl) {
       loadComicAudio(comic.id);
     }
